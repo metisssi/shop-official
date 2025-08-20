@@ -1,4 +1,4 @@
-// keyboards.js - Клавиатуры (остается без изменений)
+// keyboards.js - Клавиатуры с операторами из БД
 const config = require('./config/config');
 
 class Keyboards {
@@ -28,9 +28,16 @@ class Keyboards {
     }
 
     static getPropertiesKeyboard(properties, categoryId) {
-        const keyboard = properties.map(property => [
-            { text: `${property.name} - ${property.price.toLocaleString('ru-RU')} ₽`, callback_data: `property_${property._id}` }
-        ]);
+        const keyboard = properties.map(property => {
+            const price = property.priceInCZK ? 
+                `${property.priceInCZK.toLocaleString('cs-CZ')} Kč` : 
+                `${property.price.toLocaleString('ru-RU')} ₽`;
+            
+            return [{ 
+                text: `${property.name} - ${price}`, 
+                callback_data: `property_${property._id}` 
+            }];
+        });
         
         keyboard.push([{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]);
         
@@ -96,18 +103,58 @@ class Keyboards {
         };
     }
 
-    static getOperatorsKeyboard() {
-        const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
-            { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
-        ]);
-        
-        keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
-        
-        return {
-            reply_markup: {
-                inline_keyboard: keyboard
+    // Обновленный метод - теперь асинхронный и берет операторов из БД
+    static async getOperatorsKeyboard() {
+        try {
+            const Operator = require('./models/Operator');
+            const operators = await Operator.getActiveOperators();
+            
+            if (operators.length === 0) {
+                // Если в БД нет операторов, используем из конфига как fallback
+                const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
+                    { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
+                ]);
+                
+                keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
+                
+                return {
+                    reply_markup: {
+                        inline_keyboard: keyboard
+                    }
+                };
             }
-        };
+
+            // Используем операторов из БД
+            const keyboard = operators.map(operator => [
+                { 
+                    text: `${operator.name} ${operator.formattedUsername}`, 
+                    url: operator.getContactUrl() 
+                }
+            ]);
+            
+            keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
+            
+            return {
+                reply_markup: {
+                    inline_keyboard: keyboard
+                }
+            };
+        } catch (error) {
+            console.error('Error getting operators from DB:', error);
+            
+            // В случае ошибки возвращаем операторов из конфига
+            const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
+                { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
+            ]);
+            
+            keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
+            
+            return {
+                reply_markup: {
+                    inline_keyboard: keyboard
+                }
+            };
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-// adminUtils.js - Утилиты для администратора
+// adminUtils.js - Утилиты для администратора с поддержкой валют
 
 const Category = require('../models/Category');
 const Property = require('../models/Property');
@@ -9,6 +9,12 @@ class AdminUtils {
     constructor(bot) {
         this.bot = bot;
         this.userSessions = new Map(); // Хранение сессий пользователей
+        
+        // Курсы валют (в реальном проекте лучше получать из API)
+        this.exchangeRates = {
+            RUB_CZK: 0.4,   // 1 RUB = 0.4 CZK
+            CZK_RUB: 2.5    // 1 CZK = 2.5 RUB
+        };
     }
 
     // === УПРАВЛЕНИЕ СЕССИЯМИ ===
@@ -74,22 +80,77 @@ class AdminUtils {
         return { valid: true, value: trimmed };
     }
 
-    // Валидация цены
-    validatePrice(price) {
-        const numPrice = Number(price);
-        if (isNaN(numPrice)) {
-            return { valid: false, error: 'Цена должна быть числом' };
+    // Валидация цены с поддержкой валют
+    validatePrice(priceInput) {
+        const parsed = this.parsePriceWithCurrency(priceInput);
+        
+        if (!parsed.valid) {
+            return parsed;
+        }
+
+        const { value, currency } = parsed;
+
+        // Проверка минимальных значений
+        if (currency === 'CZK' && value < 50000) {
+            return { valid: false, error: 'Минимальная цена: 50,000 Kč' };
         }
         
-        if (numPrice < 1000) {
-            return { valid: false, error: 'Минимальная цена: 1,000 ₽' };
+        if (currency === 'RUB' && value < 100000) {
+            return { valid: false, error: 'Минимальная цена: 100,000 ₽' };
         }
         
-        if (numPrice > 100000000) {
-            return { valid: false, error: 'Максимальная цена: 100,000,000 ₽' };
+        // Проверка максимальных значений
+        if (value > 500000000) {
+            return { valid: false, error: 'Максимальная цена: 500,000,000' };
         }
         
-        return { valid: true, value: numPrice };
+        return { valid: true, value: Math.round(value), currency };
+    }
+
+    // Парсинг цены с валютой
+    parsePriceWithCurrency(text) {
+        if (!text || typeof text !== 'string') {
+            return { valid: false, error: 'Цена не может быть пустой' };
+        }
+
+        // Убираем лишние пробелы и приводим к нижнему регистру
+        const input = text.trim().toLowerCase();
+        
+        // Регулярные выражения для парсинга
+        const patterns = [
+            /^(\d+(?:\.\d+)?)\s*(czk|чеш|крон|кчк|kč)$/i,  // CZK
+            /^(\d+(?:\.\d+)?)\s*(rub|руб|рубл|₽)$/i,       // RUB
+            /^(\d+(?:\.\d+)?)$/                            // Только число (по умолчанию RUB)
+        ];
+
+        for (const pattern of patterns) {
+            const match = input.match(pattern);
+            if (match) {
+                const value = parseFloat(match[1]);
+                let currency = 'RUB'; // По умолчанию
+
+                if (match[2]) {
+                    const currencyStr = match[2].toLowerCase();
+                    if (currencyStr.includes('czk') || currencyStr.includes('чеш') || 
+                        currencyStr.includes('крон') || currencyStr.includes('кчк') || 
+                        currencyStr.includes('kč')) {
+                        currency = 'CZK';
+                    }
+                }
+
+                // Валидация числа
+                if (isNaN(value) || value <= 0) {
+                    return { valid: false, error: 'Цена должна быть положительным числом' };
+                }
+
+                return { valid: true, value: Math.round(value), currency };
+            }
+        }
+
+        return { 
+            valid: false, 
+            error: 'Неверный формат цены.\n\nПримеры:\n• 5000000 (рубли)\n• 5000000 RUB\n• 2000000 CZK\n• 2000000 крон\n• 2000000 Kč' 
+        };
     }
 
     // Валидация порядка сортировки
@@ -108,11 +169,50 @@ class AdminUtils {
         return { valid: true, value: numOrder };
     }
 
-    // === ФОРМАТИРОВАНИЕ ===
+    // === ФОРМАТИРОВАНИЕ ВАЛЮТ ===
 
     // Форматирование цены
-    formatPrice(price) {
-        return new Intl.NumberFormat('ru-RU').format(price) + ' ₽';
+    formatPrice(price, currency = 'RUB') {
+        const formatted = new Intl.NumberFormat('ru-RU').format(price);
+        
+        switch (currency) {
+            case 'CZK':
+                return `${formatted} Kč`;
+            case 'RUB':
+                return `${formatted} ₽`;
+            default:
+                return `${formatted} ${currency}`;
+        }
+    }
+
+    // Форматирование цены в обеих валютах
+    formatPriceInBothCurrencies(priceRUB, priceCZK) {
+        const rubFormatted = this.formatPrice(priceRUB, 'RUB');
+        const czkFormatted = this.formatPrice(priceCZK, 'CZK');
+        return `${rubFormatted} / ${czkFormatted}`;
+    }
+
+    // Конвертация валют
+    convertCurrency(amount, fromCurrency, toCurrency) {
+        if (fromCurrency === toCurrency) return amount;
+        
+        const rateKey = `${fromCurrency}_${toCurrency}`;
+        const rate = this.exchangeRates[rateKey];
+        
+        if (!rate) {
+            console.warn(`Exchange rate not found for ${rateKey}`);
+            return amount;
+        }
+        
+        return Math.round(amount * rate);
+    }
+
+    // Обновление курсов валют (можно вызывать периодически)
+    updateExchangeRates(newRates) {
+        if (newRates && typeof newRates === 'object') {
+            this.exchangeRates = { ...this.exchangeRates, ...newRates };
+            console.log('Exchange rates updated:', this.exchangeRates);
+        }
     }
 
     // Форматирование даты
@@ -228,7 +328,7 @@ class AdminUtils {
                 .populate('categoryId')
                 .sort({ order: 1, name: 1 });
             
-            let csv = 'ID,Название,Категория,Описание,Цена,Площадь,Комнаты,Этаж,Всего_этажей,Адрес,Доступна,Порядок,Создана,Обновлена\n';
+            let csv = 'ID,Название,Категория,Описание,Цена_RUB,Цена_CZK,Валюта,Площадь,Комнаты,Этаж,Всего_этажей,Адрес,Доступна,Порядок,Создана,Обновлена\n';
             
             properties.forEach(prop => {
                 const row = [
@@ -236,7 +336,9 @@ class AdminUtils {
                     `"${prop.name.replace(/"/g, '""')}"`,
                     `"${prop.categoryId ? prop.categoryId.name.replace(/"/g, '""') : 'Без категории'}"`,
                     `"${(prop.description || '').replace(/"/g, '""')}"`,
-                    prop.price,
+                    prop.price || '',
+                    prop.priceInCZK || '',
+                    prop.currency || 'RUB',
                     prop.specifications?.area || '',
                     prop.specifications?.rooms || '',
                     prop.specifications?.floor || '',
@@ -385,7 +487,7 @@ class AdminUtils {
 
     // Отправить уведомление всем администраторам
     async notifyAdmins(message, keyboard = null) {
-        const adminConfig = require('./adminConfig');
+        const adminConfig = require('../config/adminConfig');
         const adminIds = adminConfig.getAdminIds();
         
         const promises = adminIds.map(adminId => {
