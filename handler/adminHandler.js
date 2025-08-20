@@ -1,5 +1,5 @@
-const Category = require('./models/Category');
-const Property = require('./models/Property');
+const Category = require('../models/Category');
+const Property = require('../models/Property');
 
 class AdminHandler {
     constructor(bot, adminIds = []) {
@@ -11,7 +11,7 @@ class AdminHandler {
     // Проверка прав администратора
     isAdmin(userId) {
         return this.adminIds.includes(userId);
-    }
+    } 
 
     setupAdminCommands() {
         // Главное админ меню
@@ -64,6 +64,9 @@ class AdminHandler {
                 case 'admin_properties':
                     await this.showPropertiesMenu(chatId, messageId);
                     break;
+                case 'admin_menu':
+                    await this.showAdminMenu(chatId);
+                    break;
                 case 'category_add':
                     await this.startAddCategory(chatId);
                     break;
@@ -76,6 +79,7 @@ class AdminHandler {
                 case 'property_list':
                     await this.showPropertiesList(chatId, messageId);
                     break;
+                    
                 default:
                     if (data.startsWith('edit_category_')) {
                         const categoryId = data.replace('edit_category_', '');
@@ -83,6 +87,21 @@ class AdminHandler {
                     } else if (data.startsWith('delete_category_')) {
                         const categoryId = data.replace('delete_category_', '');
                         await this.deleteCategory(chatId, messageId, categoryId);
+                    } else if (data.startsWith('edit_cat_name_')) {
+                        const categoryId = data.replace('edit_cat_name_', '');
+                        await this.startEditCategoryName(chatId, categoryId);
+                    } else if (data.startsWith('edit_cat_desc_')) {
+                        const categoryId = data.replace('edit_cat_desc_', '');
+                        await this.startEditCategoryDescription(chatId, categoryId);
+                    } else if (data.startsWith('edit_cat_order_')) {
+                        const categoryId = data.replace('edit_cat_order_', '');
+                        await this.startEditCategoryOrder(chatId, categoryId);
+                    } else if (data.startsWith('toggle_cat_')) {
+                        const categoryId = data.replace('toggle_cat_', '');
+                        await this.toggleCategoryStatus(chatId, messageId, categoryId);
+                    } else if (data.startsWith('confirm_delete_cat_')) {
+                        const categoryId = data.replace('confirm_delete_cat_', '');
+                        await this.confirmDeleteCategory(chatId, messageId, categoryId);
                     } else if (data.startsWith('edit_property_')) {
                         const propertyId = data.replace('edit_property_', '');
                         await this.editProperty(chatId, messageId, propertyId);
@@ -171,70 +190,14 @@ class AdminHandler {
 
     // Начало добавления новой категории
     async startAddCategory(chatId) {
+        // Создаем сессию для добавления категории
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'adding_category_name', {});
+        }
+
         this.bot.sendMessage(chatId, '➕ *Добавление новой категории*\n\nВведите название категории:', {
             parse_mode: 'Markdown'
         });
-
-        // Ожидаем ввод названия категории
-        this.waitForCategoryName(chatId);
-    }
-
-    // Ожидание ввода названия категории
-    waitForCategoryName(chatId) {
-        const handler = (msg) => {
-            if (msg.chat.id !== chatId || !this.isAdmin(msg.from.id)) return;
-
-            const name = msg.text.trim();
-            if (name.length < 2) {
-                this.bot.sendMessage(chatId, '❌ Название должно содержать минимум 2 символа. Попробуйте еще раз:');
-                return;
-            }
-
-            this.bot.removeListener('message', handler);
-            this.requestCategoryDescription(chatId, name);
-        };
-
-        this.bot.on('message', handler);
-    }
-
-    // Запрос описания категории
-    requestCategoryDescription(chatId, name) {
-        this.bot.sendMessage(chatId, `📝 Название: *${name}*\n\nВведите описание категории (или напишите "пропустить"):`, {
-            parse_mode: 'Markdown'
-        });
-
-        const handler = (msg) => {
-            if (msg.chat.id !== chatId || !this.isAdmin(msg.from.id)) return;
-
-            const description = msg.text.trim() === 'пропустить' ? '' : msg.text.trim();
-            this.bot.removeListener('message', handler);
-            this.createCategory(chatId, name, description);
-        };
-
-        this.bot.on('message', handler);
-    }
-
-    // Создание категории
-    async createCategory(chatId, name, description) {
-        try {
-            const category = new Category({
-                name,
-                description,
-                isActive: true,
-                order: 0
-            });
-
-            await category.save();
-            
-            this.bot.sendMessage(chatId, `✅ Категория "*${name}*" успешно создана!`, {
-                parse_mode: 'Markdown'
-            });
-            
-            setTimeout(() => this.showAdminMenu(chatId), 1000);
-        } catch (error) {
-            console.error('Create category error:', error);
-            this.bot.sendMessage(chatId, '❌ Ошибка при создании категории. Возможно, такая категория уже существует.');
-        }
     }
 
     // Редактирование категории
@@ -321,6 +284,106 @@ class AdminHandler {
         }
     }
 
+    // === НОВЫЕ МЕТОДЫ ДЛЯ РЕДАКТИРОВАНИЯ ===
+
+    // Начало редактирования названия категории
+    async startEditCategoryName(chatId, categoryId) {
+        const category = await Category.findById(categoryId);
+        if (!category) {
+            return this.bot.sendMessage(chatId, '❌ Категория не найдена');
+        }
+
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'editing_category_name', { categoryId });
+        }
+        
+        this.bot.sendMessage(chatId, 
+            `✏️ *Редактирование названия категории*\n\nТекущее название: *${category.name}*\n\nВведите новое название:`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // Начало редактирования описания категории  
+    async startEditCategoryDescription(chatId, categoryId) {
+        const category = await Category.findById(categoryId);
+        if (!category) {
+            return this.bot.sendMessage(chatId, '❌ Категория не найдена');
+        }
+
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'editing_category_description', { categoryId });
+        }
+        
+        this.bot.sendMessage(chatId, 
+            `📄 *Редактирование описания категории*\n\nТекущее описание: *${category.description || 'Не указано'}*\n\nВведите новое описание (или "пропустить" для удаления):`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // Начало редактирования порядка категории
+    async startEditCategoryOrder(chatId, categoryId) {
+        const category = await Category.findById(categoryId);
+        if (!category) {
+            return this.bot.sendMessage(chatId, '❌ Категория не найдена');
+        }
+
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'editing_category_order', { categoryId });
+        }
+        
+        this.bot.sendMessage(chatId, 
+            `🔄 *Редактирование порядка категории*\n\nТекущий порядок: *${category.order}*\n\nВведите новый порядок (число от 0 до 9999):`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // Переключение статуса категории
+    async toggleCategoryStatus(chatId, messageId, categoryId) {
+        try {
+            const category = await Category.findById(categoryId);
+            if (!category) {
+                return this.bot.sendMessage(chatId, '❌ Категория не найдена');
+            }
+
+            category.isActive = !category.isActive;
+            await category.save();
+
+            const status = category.isActive ? 'активирована' : 'деактивирована';
+            this.bot.sendMessage(chatId, `✅ Категория "${category.name}" ${status}!`);
+            
+            setTimeout(() => this.showAdminMenu(chatId), 1000);
+        } catch (error) {
+            console.error('Toggle category status error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при изменении статуса категории');
+        }
+    }
+
+    // Подтверждение удаления категории
+    async confirmDeleteCategory(chatId, messageId, categoryId) {
+        try {
+            const category = await Category.findById(categoryId);
+            if (!category) {
+                return this.bot.sendMessage(chatId, '❌ Категория не найдена');
+            }
+
+            // Удаляем все связанные объекты недвижимости
+            await Property.deleteMany({ categoryId });
+            
+            // Удаляем категорию
+            await Category.findByIdAndDelete(categoryId);
+
+            this.bot.editMessageText(
+                `✅ Категория "${category.name}" и все связанные объекты недвижимости удалены!`,
+                { chat_id: chatId, message_id: messageId }
+            );
+            
+            setTimeout(() => this.showAdminMenu(chatId), 2000);
+        } catch (error) {
+            console.error('Confirm delete category error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при удалении категории');
+        }
+    }
+
     // === УПРАВЛЕНИЕ НЕДВИЖИМОСТЬЮ ===
 
     // Меню управления недвижимостью
@@ -395,7 +458,6 @@ class AdminHandler {
 
     // Начало добавления новой недвижимости
     async startAddProperty(chatId) {
-        // Сначала показываем список категорий для выбора
         try {
             const categories = await Category.find({ isActive: true }).sort({ order: 1, name: 1 });
             
@@ -420,6 +482,15 @@ class AdminHandler {
             console.error('Start add property error:', error);
             this.bot.sendMessage(chatId, '❌ Ошибка при загрузке категорий');
         }
+    }
+
+    // Заглушки для методов недвижимости (добавьте позже)
+    async editProperty(chatId, messageId, propertyId) {
+        this.bot.sendMessage(chatId, '🚧 Редактирование недвижимости - в разработке');
+    }
+
+    async deleteProperty(chatId, messageId, propertyId) {
+        this.bot.sendMessage(chatId, '🚧 Удаление недвижимости - в разработке');
     }
 }
 

@@ -1,9 +1,9 @@
 // adminUtils.js - Утилиты для администратора
 
-const Category = require('./models/Category');
-const Property = require('./models/Property');
-const Order = require('./models/Order');
-const User = require('./models/User');
+const Category = require('../models/Category');
+const Property = require('../models/Property');
+const Order = require('../models/Order');
+const User = require('../models/User');
 
 class AdminUtils {
     constructor(bot) {
