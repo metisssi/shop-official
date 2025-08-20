@@ -55,6 +55,9 @@ class ClientHandler {
         if (data.startsWith('admin_') || 
             data.startsWith('category_add') || 
             data.startsWith('property_add') ||
+            data.startsWith('product_add') ||
+            data.startsWith('product_list') ||
+            data.startsWith('add_product_to_') ||
             data.startsWith('edit_') ||
             data.startsWith('delete_') ||
             data.startsWith('confirm_') ||
