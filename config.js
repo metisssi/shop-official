@@ -1,6 +1,6 @@
 const config = {
     // ⚠️ ОБЯЗАТЕЛЬНО ЗАМЕНИ НА СВОЙ ТОКЕН ОТ @BotFather
-    BOT_TOKEN: "AAHHzYjcK-ZmPk6Cl3wsOBvF_4GazKbMCxc", // Замени на реальный токен
+    BOT_TOKEN: "8270422215:AAHHzYjcK-ZmPk6Cl3wsOBvF_4GazKbMCxc", // Замени на реальный токен
 
     // 🗄️ MongoDB connection string
     MONGODB_URI: "mongodb+srv://eli:JjxfiM5wNeLLfMUs@cluster0.zss7lr4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0", // Или твой MongoDB Atlas URL

@@ -2,7 +2,6 @@
 const config = require('./config');
 const Keyboards = require('./keyboards');
 
-
 class ClientHandler {
     constructor(bot, database) {
         this.bot = bot;
@@ -447,91 +446,5 @@ class ClientHandler {
         });
     }
 }
-
-// app.js - Главный файл с модулями
-const TelegramBot = require('node-telegram-bot-api');
-const mongoose = require('mongoose');
-
-class RealEstateBot {
-    constructor() {
-        this.bot = new TelegramBot(config.BOT_TOKEN, { polling: true });
-        this.database = new Database();
-        this.clientHandler = new ClientHandler(this.bot, this.database);
-        
-        this.setupHandlers();
-    }
-
-    setupHandlers() {
-        // Обработчик команды /start
-        this.bot.onText(/\/start/, (msg) => {
-            this.clientHandler.handleStart(msg);
-        });
-
-        // Обработчик callback запросов
-        this.bot.on('callback_query', (callbackQuery) => {
-            this.clientHandler.handleCallback(callbackQuery);
-        });
-
-        // Обработчик текстовых сообщений
-        this.bot.on('message', (msg) => {
-            // Пропускаем команды
-            if (msg.text && msg.text.startsWith('/')) return;
-            
-            this.clientHandler.handleTextMessage(msg);
-        });
-
-        // Обработчик ошибок
-        this.bot.on('error', (error) => {
-            console.error('Ошибка бота:', error);
-        });
-
-        // Обработчик ошибок polling
-        this.bot.on('polling_error', (error) => {
-            console.error('Ошибка polling:', error);
-        });
-
-        console.log('🤖 Бот запущен и готов к работе!');
-    }
-
-    // Graceful shutdown
-    async shutdown() {
-        console.log('🛑 Остановка бота...');
-        this.bot.stopPolling();
-        await mongoose.disconnect();
-        console.log('✅ Бот остановлен');
-        process.exit(0);
-    }
-}
-
-// Обработка сигналов для graceful shutdown
-process.on('SIGINT', async () => {
-    if (global.botInstance) {
-        await global.botInstance.shutdown();
-    }
-});
-
-process.on('SIGTERM', async () => {
-    if (global.botInstance) {
-        await global.botInstance.shutdown();
-    }
-});
-
-// Запуск бота
-if (require.main === module) {
-    global.botInstance = new RealEstateBot();
-}
-
-module.exports = { 
-    RealEstateBot, 
-    config, 
-    Database, 
-    ClientHandler, 
-    Keyboards,
-    // Экспорт моделей
-    Category,
-    Property, 
-    Order,
-    User
-};
 
 module.exports = ClientHandler;
