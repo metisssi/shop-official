@@ -1,3 +1,11 @@
+const mongoose = require('mongoose');
+const config = require('./config');
+const Category = require('./models/Category');
+const Property = require('./models/Property');
+const Order = require('./models/Order');
+const User = require('./models/User');
+
+
 class Database {
     constructor() {
         this.connect();
@@ -200,3 +208,5 @@ class Database {
         return await Order.findByIdAndUpdate(orderId, updateData, { new: true });
     }
 }
+
+module.exports = Database;

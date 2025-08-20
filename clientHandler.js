@@ -1,4 +1,7 @@
 // clientHandler.js - Основная логика клиента (обновленная для MongoDB)
+const config = require('./config');
+const Keyboards = require('./keyboards');
+
 
 class ClientHandler {
     constructor(bot, database) {
@@ -530,3 +533,5 @@ module.exports = {
     Order,
     User
 };
+
+module.exports = ClientHandler;

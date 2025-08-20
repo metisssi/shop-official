@@ -19,6 +19,6 @@ const config = {
     ]
 };
 
-
+module.exports = config;
 
 // JjxfiM5wNeLLfMUs  eli

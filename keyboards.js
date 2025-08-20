@@ -1,4 +1,6 @@
 // keyboards.js - Клавиатуры (остается без изменений)
+const config = require('./config');
+
 class Keyboards {
     static getStartKeyboard() {
         return {
@@ -108,3 +110,5 @@ class Keyboards {
         };
     }
 }
+
+module.exports = Keyboards;
