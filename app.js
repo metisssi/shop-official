@@ -1,13 +1,13 @@
 const TelegramBot = require('node-telegram-bot-api');
 const mongoose = require('mongoose');
-const config = require('./config');
+const config = require('./config/config');
 const Database = require('./database');
-const ClientHandler = require('./clientHandler');
+const ClientHandler = require('./handler/clientHandler');
 
 // Импорт админских модулей
 const AdminHandler = require('./handler/adminHandler');
-const AdminUtils = require('./utlis/adminUtils');
-const adminConfig = require('./adminConfig');
+const AdminUtils = require('./utils/adminUtils');
+const adminConfig = require('./config/adminConfig');
 
 class RealEstateBot {
     constructor() {
@@ -18,6 +18,9 @@ class RealEstateBot {
         // Инициализация админ модулей
         this.adminUtils = new AdminUtils(this.bot);
         this.adminHandler = new AdminHandler(this.bot, adminConfig.getAdminIds());
+        
+        // Делаем adminUtils глобальным для доступа из других модулей
+        global.adminUtils = this.adminUtils;
         
         this.setupHandlers();
         
@@ -36,7 +39,7 @@ class RealEstateBot {
             if (!adminConfig.isAdmin(msg.from.id)) {
                 return this.bot.sendMessage(msg.chat.id, '❌ У вас нет прав администратора');
             }
-            // AdminHandler уже обрабатывает эту команду
+            this.adminHandler.showAdminMenu(msg.chat.id);
         });
 
         // Обработка callback запросов
@@ -84,20 +87,8 @@ class RealEstateBot {
                     await this.handleCategoryNameInput(chatId, userId, text);
                     break;
                     
-                case 'adding_category_description':
-                    await this.handleCategoryDescriptionInput(chatId, userId, text, session.data.name);
-                    break;
-                    
                 case 'editing_category_name':
                     await this.handleEditCategoryName(chatId, userId, text, session.data.categoryId);
-                    break;
-                    
-                case 'editing_category_description':
-                    await this.handleEditCategoryDescription(chatId, userId, text, session.data.categoryId);
-                    break;
-                    
-                case 'editing_category_order':
-                    await this.handleEditCategoryOrder(chatId, userId, text, session.data.categoryId);
                     break;
                     
                 default:
@@ -121,28 +112,12 @@ class RealEstateBot {
             return this.bot.sendMessage(chatId, `❌ ${validation.error}\nПопробуйте еще раз:`);
         }
 
-        // Переходим к вводу описания
-        this.adminUtils.createSession(userId, 'adding_category_description', { name: validation.value });
-        this.bot.sendMessage(chatId, 
-            `📝 Название: *${validation.value}*\n\nВведите описание категории (или напишите "пропустить"):`,
-            { parse_mode: 'Markdown' }
-        );
-    }
-
-    async handleCategoryDescriptionInput(chatId, userId, text, name) {
-        const description = text.trim() === 'пропустить' ? '' : text.trim();
-        const validation = this.adminUtils.validateDescription(description);
-        
-        if (!validation.valid) {
-            return this.bot.sendMessage(chatId, `❌ ${validation.error}\nПопробуйте еще раз:`);
-        }
-
-        // Создаем категорию
+        // Создаем категорию сразу (только с названием)
         try {
             const Category = require('./models/Category');
             const category = new Category({
-                name,
-                description: validation.value,
+                name: validation.value,
+                description: '', // Пустое описание
                 isActive: true,
                 order: 0
             });
@@ -150,7 +125,7 @@ class RealEstateBot {
             await category.save();
             this.adminUtils.clearSession(userId);
             
-            this.bot.sendMessage(chatId, `✅ Категория "*${name}*" успешно создана!`, {
+            this.bot.sendMessage(chatId, `✅ Категория "*${validation.value}*" успешно создана!`, {
                 parse_mode: 'Markdown'
             });
             
@@ -185,51 +160,6 @@ class RealEstateBot {
             this.bot.sendMessage(chatId, '❌ Ошибка при обновлении названия категории.');
         }
     }
-
-    async handleEditCategoryDescription(chatId, userId, text, categoryId) {
-        const description = text.trim() === 'пропустить' ? '' : text.trim();
-        const validation = this.adminUtils.validateDescription(description);
-        
-        if (!validation.valid) {
-            return this.bot.sendMessage(chatId, `❌ ${validation.error}\nПопробуйте еще раз:`);
-        }
-
-        try {
-            const Category = require('./models/Category');
-            await Category.findByIdAndUpdate(categoryId, { description: validation.value });
-            
-            this.adminUtils.clearSession(userId);
-            this.bot.sendMessage(chatId, '✅ Описание категории обновлено!');
-            
-            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
-        } catch (error) {
-            console.error('Edit category description error:', error);
-            this.adminUtils.clearSession(userId);
-            this.bot.sendMessage(chatId, '❌ Ошибка при обновлении описания категории.');
-        }
-    }
-
-    async handleEditCategoryOrder(chatId, userId, text, categoryId) {
-        const validation = this.adminUtils.validateOrder(text);
-        if (!validation.valid) {
-            return this.bot.sendMessage(chatId, `❌ ${validation.error}\nПопробуйте еще раз:`);
-        }
-
-        try {
-            const Category = require('./models/Category');
-            await Category.findByIdAndUpdate(categoryId, { order: validation.value });
-            
-            this.adminUtils.clearSession(userId);
-            this.bot.sendMessage(chatId, `✅ Порядок категории обновлен на ${validation.value}`);
-            
-            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
-        } catch (error) {
-            console.error('Edit category order error:', error);
-            this.adminUtils.clearSession(userId);
-            this.bot.sendMessage(chatId, '❌ Ошибка при обновлении порядка категории.');
-        }
-    }
 }
 
 new RealEstateBot();
-

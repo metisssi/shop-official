@@ -1,5 +1,5 @@
 // keyboards.js - Клавиатуры (остается без изменений)
-const config = require('./config');
+const config = require('./config/config');
 
 class Keyboards {
     static getStartKeyboard() {

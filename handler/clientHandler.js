@@ -1,6 +1,6 @@
 // clientHandler.js - Основная логика клиента (обновленная для MongoDB)
-const config = require('./config');
-const Keyboards = require('./keyboards');
+const config = require('../config/config');
+const Keyboards = require('../keyboards');
 
 class ClientHandler {
     constructor(bot, database) {
@@ -51,6 +51,18 @@ class ClientHandler {
         const data = callbackQuery.data;
         const session = this.getUserSession(chatId);
 
+        // Пропускаем админские callback'и
+        if (data.startsWith('admin_') || 
+            data.startsWith('category_add') || 
+            data.startsWith('property_add') ||
+            data.startsWith('edit_') ||
+            data.startsWith('delete_') ||
+            data.startsWith('confirm_') ||
+            data.startsWith('toggle_') ||
+            data.startsWith('select_cat_')) {
+            return;
+        }
+
         try {
             if (data === 'work_with_bot') {
                 await this.showCategories(chatId, messageId);
@@ -60,22 +72,31 @@ class ClientHandler {
             
             } else if (data.startsWith('category_')) {
                 const categoryId = data.split('_')[1];
-                await this.showProperties(chatId, messageId, categoryId);
+                // Проверяем, что это валидный ObjectId (24 символа)
+                if (categoryId && categoryId.length === 24) {
+                    await this.showProperties(chatId, messageId, categoryId);
+                }
             
             } else if (data.startsWith('property_')) {
                 const propertyId = data.split('_')[1];
-                await this.showPropertyDetail(chatId, messageId, propertyId);
+                if (propertyId && propertyId.length === 24) {
+                    await this.showPropertyDetail(chatId, messageId, propertyId);
+                }
             
             } else if (data.startsWith('select_quantity_')) {
                 const propertyId = data.split('_')[2];
-                await this.showQuantitySelection(chatId, messageId, propertyId);
+                if (propertyId && propertyId.length === 24) {
+                    await this.showQuantitySelection(chatId, messageId, propertyId);
+                }
             
             } else if (data.startsWith('quantity_')) {
                 const [, propertyId, quantity] = data.split('_');
-                if (quantity === 'custom') {
-                    await this.requestCustomQuantity(chatId, messageId, propertyId);
-                } else {
-                    await this.addToCart(chatId, messageId, propertyId, parseInt(quantity));
+                if (propertyId && propertyId.length === 24) {
+                    if (quantity === 'custom') {
+                        await this.requestCustomQuantity(chatId, messageId, propertyId);
+                    } else {
+                        await this.addToCart(chatId, messageId, propertyId, parseInt(quantity));
+                    }
                 }
             
             } else if (data === 'continue_shopping') {
@@ -106,6 +127,9 @@ class ClientHandler {
                     `👋 Добро пожаловать в бот по продаже недвижимости!\n\n🏠 У нас представлены лучшие объекты недвижимости\n💼 Профессиональные консультации\n🚀 Быстрое оформление сделок\n\nВыберите, как хотите продолжить:`,
                     { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
                 );
+            } else if (data === 'current_page') {
+                // Игнорируем нажатие на индикатор текущей страницы
+                return;
             }
 
             await this.bot.answerCallbackQuery(callbackQuery.id);

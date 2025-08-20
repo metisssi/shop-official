@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const config = require('./config');
+const config = require('./config/config');
 const Category = require('./models/Category');
 const Property = require('./models/Property');
 const Order = require('./models/Order');

@@ -34,8 +34,7 @@ class AdminHandler {
         const keyboard = {
             inline_keyboard: [
                 [
-                    { text: '📂 Управление категориями', callback_data: 'admin_categories' },
-                    { text: '🏠 Управление недвижимостью', callback_data: 'admin_properties' }
+                    { text: '📂 Управление категориями', callback_data: 'admin_categories' }
                 ],
                 [
                     { text: '📊 Статистика', callback_data: 'admin_stats' },
@@ -61,9 +60,6 @@ class AdminHandler {
                 case 'admin_categories':
                     await this.showCategoriesMenu(chatId, messageId);
                     break;
-                case 'admin_properties':
-                    await this.showPropertiesMenu(chatId, messageId);
-                    break;
                 case 'admin_menu':
                     await this.showAdminMenu(chatId);
                     break;
@@ -72,12 +68,6 @@ class AdminHandler {
                     break;
                 case 'category_list':
                     await this.showCategoriesList(chatId, messageId);
-                    break;
-                case 'property_add':
-                    await this.startAddProperty(chatId);
-                    break;
-                case 'property_list':
-                    await this.showPropertiesList(chatId, messageId);
                     break;
                     
                 default:
@@ -90,24 +80,12 @@ class AdminHandler {
                     } else if (data.startsWith('edit_cat_name_')) {
                         const categoryId = data.replace('edit_cat_name_', '');
                         await this.startEditCategoryName(chatId, categoryId);
-                    } else if (data.startsWith('edit_cat_desc_')) {
-                        const categoryId = data.replace('edit_cat_desc_', '');
-                        await this.startEditCategoryDescription(chatId, categoryId);
-                    } else if (data.startsWith('edit_cat_order_')) {
-                        const categoryId = data.replace('edit_cat_order_', '');
-                        await this.startEditCategoryOrder(chatId, categoryId);
                     } else if (data.startsWith('toggle_cat_')) {
                         const categoryId = data.replace('toggle_cat_', '');
                         await this.toggleCategoryStatus(chatId, messageId, categoryId);
                     } else if (data.startsWith('confirm_delete_cat_')) {
                         const categoryId = data.replace('confirm_delete_cat_', '');
                         await this.confirmDeleteCategory(chatId, messageId, categoryId);
-                    } else if (data.startsWith('edit_property_')) {
-                        const propertyId = data.replace('edit_property_', '');
-                        await this.editProperty(chatId, messageId, propertyId);
-                    } else if (data.startsWith('delete_property_')) {
-                        const propertyId = data.replace('delete_property_', '');
-                        await this.deleteProperty(chatId, messageId, propertyId);
                     }
                     break;
             }
@@ -164,9 +142,7 @@ class AdminHandler {
 
             categories.forEach((category, index) => {
                 const status = category.isActive ? '✅' : '❌';
-                text += `${index + 1}. ${status} *${category.name}*\n`;
-                text += `   📝 ${category.description || 'Без описания'}\n`;
-                text += `   🔄 Порядок: ${category.order}\n\n`;
+                text += `${index + 1}. ${status} *${category.name}*\n\n`;
 
                 keyboard.push([
                     { text: `✏️ ${category.name}`, callback_data: `edit_category_${category._id}` },
@@ -211,19 +187,15 @@ class AdminHandler {
             const status = category.isActive ? '✅ Активна' : '❌ Неактивна';
             const text = `✏️ *Редактирование категории*\n\n` +
                         `📝 *Название:* ${category.name}\n` +
-                        `📄 *Описание:* ${category.description || 'Не указано'}\n` +
-                        `📊 *Статус:* ${status}\n` +
-                        `🔄 *Порядок:* ${category.order}`;
+                        `📊 *Статус:* ${status}`;
 
             const keyboard = {
                 inline_keyboard: [
                     [
-                        { text: '✏️ Изменить название', callback_data: `edit_cat_name_${categoryId}` },
-                        { text: '📄 Изменить описание', callback_data: `edit_cat_desc_${categoryId}` }
+                        { text: '✏️ Изменить название', callback_data: `edit_cat_name_${categoryId}` }
                     ],
                     [
-                        { text: category.isActive ? '❌ Деактивировать' : '✅ Активировать', callback_data: `toggle_cat_${categoryId}` },
-                        { text: '🔄 Изменить порядок', callback_data: `edit_cat_order_${categoryId}` }
+                        { text: category.isActive ? '❌ Деактивировать' : '✅ Активировать', callback_data: `toggle_cat_${categoryId}` }
                     ],
                     [{ text: '⬅️ Назад к списку', callback_data: 'category_list' }]
                 ]
@@ -284,8 +256,6 @@ class AdminHandler {
         }
     }
 
-    // === НОВЫЕ МЕТОДЫ ДЛЯ РЕДАКТИРОВАНИЯ ===
-
     // Начало редактирования названия категории
     async startEditCategoryName(chatId, categoryId) {
         const category = await Category.findById(categoryId);
@@ -299,40 +269,6 @@ class AdminHandler {
         
         this.bot.sendMessage(chatId, 
             `✏️ *Редактирование названия категории*\n\nТекущее название: *${category.name}*\n\nВведите новое название:`,
-            { parse_mode: 'Markdown' }
-        );
-    }
-
-    // Начало редактирования описания категории  
-    async startEditCategoryDescription(chatId, categoryId) {
-        const category = await Category.findById(categoryId);
-        if (!category) {
-            return this.bot.sendMessage(chatId, '❌ Категория не найдена');
-        }
-
-        if (global.adminUtils) {
-            global.adminUtils.createSession(chatId, 'editing_category_description', { categoryId });
-        }
-        
-        this.bot.sendMessage(chatId, 
-            `📄 *Редактирование описания категории*\n\nТекущее описание: *${category.description || 'Не указано'}*\n\nВведите новое описание (или "пропустить" для удаления):`,
-            { parse_mode: 'Markdown' }
-        );
-    }
-
-    // Начало редактирования порядка категории
-    async startEditCategoryOrder(chatId, categoryId) {
-        const category = await Category.findById(categoryId);
-        if (!category) {
-            return this.bot.sendMessage(chatId, '❌ Категория не найдена');
-        }
-
-        if (global.adminUtils) {
-            global.adminUtils.createSession(chatId, 'editing_category_order', { categoryId });
-        }
-        
-        this.bot.sendMessage(chatId, 
-            `🔄 *Редактирование порядка категории*\n\nТекущий порядок: *${category.order}*\n\nВведите новый порядок (число от 0 до 9999):`,
             { parse_mode: 'Markdown' }
         );
     }
@@ -382,115 +318,6 @@ class AdminHandler {
             console.error('Confirm delete category error:', error);
             this.bot.sendMessage(chatId, '❌ Ошибка при удалении категории');
         }
-    }
-
-    // === УПРАВЛЕНИЕ НЕДВИЖИМОСТЬЮ ===
-
-    // Меню управления недвижимостью
-    showPropertiesMenu(chatId, messageId) {
-        const keyboard = {
-            inline_keyboard: [
-                [
-                    { text: '➕ Добавить объект', callback_data: 'property_add' },
-                    { text: '📋 Список объектов', callback_data: 'property_list' }
-                ],
-                [{ text: '⬅️ Назад в админ меню', callback_data: 'admin_menu' }]
-            ]
-        };
-
-        this.bot.editMessageText('🏠 *Управление недвижимостью*\n\nВыберите действие:', {
-            chat_id: chatId,
-            message_id: messageId,
-            parse_mode: 'Markdown',
-            reply_markup: keyboard
-        });
-    }
-
-    // Список всех объектов недвижимости
-    async showPropertiesList(chatId, messageId) {
-        try {
-            const properties = await Property.find().populate('categoryId').sort({ order: 1, name: 1 });
-            
-            if (properties.length === 0) {
-                return this.bot.editMessageText('🏠 *Недвижимость*\n\n❌ Объекты не найдены', {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [[
-                            { text: '⬅️ Назад', callback_data: 'admin_properties' }
-                        ]]
-                    }
-                });
-            }
-
-            let text = '🏠 *Список объектов недвижимости:*\n\n';
-            const keyboard = [];
-
-            properties.forEach((property, index) => {
-                const status = property.isAvailable ? '✅' : '❌';
-                const category = property.categoryId ? property.categoryId.name : 'Без категории';
-                
-                text += `${index + 1}. ${status} *${property.name}*\n`;
-                text += `   📂 ${category}\n`;
-                text += `   💰 ${property.price.toLocaleString()} ₽\n`;
-                text += `   📍 ${property.specifications?.address || 'Адрес не указан'}\n\n`;
-
-                keyboard.push([
-                    { text: `✏️ ${property.name}`, callback_data: `edit_property_${property._id}` },
-                    { text: `🗑 Удалить`, callback_data: `delete_property_${property._id}` }
-                ]);
-            });
-
-            keyboard.push([{ text: '⬅️ Назад', callback_data: 'admin_properties' }]);
-
-            this.bot.editMessageText(text, {
-                chat_id: chatId,
-                message_id: messageId,
-                parse_mode: 'Markdown',
-                reply_markup: { inline_keyboard: keyboard }
-            });
-        } catch (error) {
-            console.error('Show properties list error:', error);
-            this.bot.sendMessage(chatId, '❌ Ошибка при загрузке объектов недвижимости');
-        }
-    }
-
-    // Начало добавления новой недвижимости
-    async startAddProperty(chatId) {
-        try {
-            const categories = await Category.find({ isActive: true }).sort({ order: 1, name: 1 });
-            
-            if (categories.length === 0) {
-                return this.bot.sendMessage(chatId, '❌ Для добавления недвижимости нужно сначала создать категории');
-            }
-
-            let text = '➕ *Добавление объекта недвижимости*\n\nВыберите категорию:';
-            const keyboard = [];
-
-            categories.forEach(category => {
-                keyboard.push([{ text: category.name, callback_data: `select_cat_${category._id}` }]);
-            });
-
-            keyboard.push([{ text: '❌ Отмена', callback_data: 'admin_properties' }]);
-
-            this.bot.sendMessage(chatId, text, {
-                parse_mode: 'Markdown',
-                reply_markup: { inline_keyboard: keyboard }
-            });
-        } catch (error) {
-            console.error('Start add property error:', error);
-            this.bot.sendMessage(chatId, '❌ Ошибка при загрузке категорий');
-        }
-    }
-
-    // Заглушки для методов недвижимости (добавьте позже)
-    async editProperty(chatId, messageId, propertyId) {
-        this.bot.sendMessage(chatId, '🚧 Редактирование недвижимости - в разработке');
-    }
-
-    async deleteProperty(chatId, messageId, propertyId) {
-        this.bot.sendMessage(chatId, '🚧 Удаление недвижимости - в разработке');
     }
 }
 
