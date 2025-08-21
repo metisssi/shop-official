@@ -52,8 +52,8 @@ class ClientHandler {
         const session = this.getUserSession(chatId);
 
         // Пропускаем админские callback'и
-        if (data.startsWith('admin_') || 
-            data.startsWith('category_add') || 
+        if (data.startsWith('admin_') ||
+            data.startsWith('category_add') ||
             data.startsWith('property_add') ||
             data.startsWith('product_add') ||
             data.startsWith('product_list') ||
@@ -69,29 +69,29 @@ class ClientHandler {
         try {
             if (data === 'work_with_bot') {
                 await this.showCategories(chatId, messageId);
-            
+
             } else if (data === 'contact_operator') {
                 await this.showOperators(chatId, messageId);
-            
+
             } else if (data.startsWith('category_')) {
                 const categoryId = data.split('_')[1];
                 // Проверяем, что это валидный ObjectId (24 символа)
                 if (categoryId && categoryId.length === 24) {
                     await this.showProperties(chatId, messageId, categoryId);
                 }
-            
+
             } else if (data.startsWith('property_')) {
                 const propertyId = data.split('_')[1];
                 if (propertyId && propertyId.length === 24) {
                     await this.showPropertyDetail(chatId, messageId, propertyId);
                 }
-            
+
             } else if (data.startsWith('select_quantity_')) {
                 const propertyId = data.split('_')[2];
                 if (propertyId && propertyId.length === 24) {
                     await this.showQuantitySelection(chatId, messageId, propertyId);
                 }
-            
+
             } else if (data.startsWith('quantity_')) {
                 const [, propertyId, quantity] = data.split('_');
                 if (propertyId && propertyId.length === 24) {
@@ -101,29 +101,29 @@ class ClientHandler {
                         await this.addToCart(chatId, messageId, propertyId, parseInt(quantity));
                     }
                 }
-            
+
             } else if (data === 'continue_shopping') {
                 await this.showCategories(chatId, messageId);
-            
+
             } else if (data === 'view_cart') {
                 await this.showCart(chatId, messageId);
-            
+
             } else if (data === 'clear_cart') {
                 session.cart = [];
                 await this.bot.editMessageText(
                     "🗑️ Корзина очищена!",
                     { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
                 );
-            
+
             } else if (data === 'complete_order') {
                 await this.completeOrder(chatId, messageId);
-            
+
             } else if (data === 'my_stats') {
                 await this.showUserStats(chatId, messageId);
-            
+
             } else if (data === 'back_to_categories') {
                 await this.showCategories(chatId, messageId);
-            
+
             } else if (data === 'back_to_start') {
                 session.state = 'choosing_action';
                 await this.bot.editMessageText(
@@ -142,23 +142,26 @@ class ClientHandler {
         }
     }
 
-    async showCategories(chatId, messageId) {
-        try {
-            const categories = await this.db.getCategories();
-            const session = this.getUserSession(chatId);
-            session.state = 'browsing_categories';
+   async showCategories(chatId, messageId) {
+    try {
+        const categories = await this.db.getCategories();
+        const session = this.getUserSession(chatId);
+        session.state = 'browsing_categories';
 
-            const text = "🏠 Выберите категорию недвижимости:";
-            
-            await this.bot.editMessageText(text, {
-                chat_id: chatId,
-                message_id: messageId,
-                ...Keyboards.getCategoriesKeyboard(categories)
-            });
-        } catch (error) {
-            console.error('Ошибка при показе категорий:', error);
-        }
+        const text = "🏠 Выберите категорию недвижимости:";
+        
+        // 🔥 ИСПРАВЛЕНИЕ: Правильный вызов статического метода
+        const keyboard = Keyboards.getCategoriesKeyboard(categories);
+        
+        await this.bot.editMessageText(text, {
+            chat_id: chatId,
+            message_id: messageId,
+            ...keyboard  // Разворачиваем объект с reply_markup
+        });
+    } catch (error) {
+        console.error('Ошибка при показе категорий:', error);
     }
+}
 
     async showProperties(chatId, messageId, categoryId) {
         try {
@@ -177,7 +180,7 @@ class ClientHandler {
             }
 
             const text = `🏘️ ${category.name}\n\nВыберите объект недвижимости:`;
-            
+
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
@@ -188,6 +191,9 @@ class ClientHandler {
         }
     }
 
+    // В файле handler/clientHandler.js
+    // Замени метод showPropertyDetail (строки примерно 149-175):
+
     async showPropertyDetail(chatId, messageId, propertyId) {
         try {
             const property = await this.db.getPropertyById(propertyId);
@@ -196,7 +202,14 @@ class ClientHandler {
             session.currentProperty = propertyId;
 
             let text = `🏠 ${property.name}\n\n`;
-            text += `💰 Цена: ${property.price.toLocaleString('ru-RU')} ₽\n`;
+
+            // 🔥 ИСПРАВЛЕНИЕ: Показываем цену в основной валюте товара
+            if (property.currency === 'CZK' && property.priceInCZK) {
+                text += `💰 Цена: ${property.priceInCZK.toLocaleString('cs-CZ')} Kč\n`;
+            } else {
+                text += `💰 Цена: ${property.price.toLocaleString('ru-RU')} ₽\n`;
+            }
+
             text += `📝 ${property.description}\n\n`;
 
             if (property.specifications) {
@@ -236,14 +249,27 @@ class ClientHandler {
         }
     }
 
+    // В файле handler/clientHandler.js  
+    // Замени метод addToCart (строки примерно 195-220):
+
     async addToCart(chatId, messageId, propertyId, quantity) {
         try {
             const property = await this.db.getPropertyById(propertyId);
             const session = this.getUserSession(chatId);
-            
+
+            // 🔥 ИСПРАВЛЕНИЕ: Используем цену в основной валюте товара
+            let priceToUse, priceDisplay;
+            if (property.currency === 'CZK' && property.priceInCZK) {
+                priceToUse = property.priceInCZK;
+                priceDisplay = `${(priceToUse * quantity).toLocaleString('cs-CZ')} Kč`;
+            } else {
+                priceToUse = property.price;
+                priceDisplay = `${(priceToUse * quantity).toLocaleString('ru-RU')} ₽`;
+            }
+
             // Проверяем, есть ли уже такой товар в корзине
             const existingItem = session.cart.find(item => item.propertyId.toString() === propertyId);
-            
+
             if (existingItem) {
                 existingItem.quantity += quantity;
                 existingItem.total = existingItem.price * existingItem.quantity;
@@ -251,13 +277,14 @@ class ClientHandler {
                 session.cart.push({
                     propertyId: property._id,
                     name: property.name,
-                    price: property.price,
+                    price: priceToUse,
+                    currency: property.currency || 'RUB',
                     quantity: quantity,
-                    total: property.price * quantity
+                    total: priceToUse * quantity
                 });
             }
 
-            const text = `✅ Добавлено в заказ:\n\n🏠 ${property.name}\n📦 Количество: ${quantity}\n💰 Сумма: ${(property.price * quantity).toLocaleString('ru-RU')} ₽\n\n🛒 В корзине: ${session.cart.length} поз.\n\nХотите заказать что-то ещё?`;
+            const text = `✅ Добавлено в заказ:\n\n🏠 ${property.name}\n📦 Количество: ${quantity}\n💰 Сумма: ${priceDisplay}\n\n🛒 В корзине: ${session.cart.length} поз.\n\nХотите заказать что-то ещё?`;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
@@ -317,7 +344,7 @@ class ClientHandler {
             text += `📅 Регистрация: ${user.createdAt.toLocaleDateString('ru-RU')}\n`;
             text += `🛒 Всего заказов: ${user.totalOrders}\n`;
             text += `💰 Потрачено: ${user.totalSpent.toLocaleString('ru-RU')} ₽\n`;
-            
+
             if (orders.length > 0) {
                 text += `\n📋 Последние заказы:\n`;
                 orders.slice(0, 3).forEach((order, index) => {
@@ -372,7 +399,7 @@ class ClientHandler {
             orderText += `\n`;
             if (user.username) orderText += `📱 @${user.username}\n`;
             orderText += `🆔 ID: ${chatId}\n\n`;
-            
+
             session.cart.forEach((item, index) => {
                 orderText += `${index + 1}. ${item.name}\n`;
                 orderText += `   📦 Количество: ${item.quantity}\n`;
@@ -439,7 +466,7 @@ class ClientHandler {
 
         if (session.state === 'waiting_custom_quantity') {
             const quantity = parseInt(msg.text);
-            
+
             if (isNaN(quantity) || quantity <= 0) {
                 await this.bot.sendMessage(chatId, "❌ Пожалуйста, введите корректное число больше 0");
                 return;
@@ -470,7 +497,7 @@ class ClientHandler {
         try {
             // Здесь добавлен await!
             const operatorsKeyboard = await Keyboards.getOperatorsKeyboard();
-            
+
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
@@ -478,7 +505,7 @@ class ClientHandler {
             });
         } catch (error) {
             console.error('Ошибка при показе операторов:', error);
-            
+
             // Fallback на стартовое меню в случае ошибки
             await this.bot.editMessageText(
                 "❌ Ошибка при загрузке списка операторов. Попробуйте позже.",

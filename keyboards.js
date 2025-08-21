@@ -13,13 +13,27 @@ class Keyboards {
         };
     }
 
-    static getCategoriesKeyboard(categories) {
-        const keyboard = categories.map(category => [
-            { text: category.name, callback_data: `category_${category._id}` }
-        ]);
-        
-        keyboard.push([{ text: "📊 Моя статистика", callback_data: "my_stats" }]);
-        
+    // В файле keyboards.js
+    // Замени метод getPropertiesKeyboard (строки примерно 25-40):
+
+    static getPropertiesKeyboard(properties, categoryId) {
+        const keyboard = properties.map(property => {
+            // 🔥 ИСПРАВЛЕНИЕ: Показываем цену в правильной валюте
+            let price;
+            if (property.currency === 'CZK' && property.priceInCZK) {
+                price = `${property.priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            } else {
+                price = `${property.price.toLocaleString('ru-RU')} ₽`;
+            }
+
+            return [{
+                text: `${property.name} - ${price}`,
+                callback_data: `property_${property._id}`
+            }];
+        });
+
+        keyboard.push([{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]);
+
         return {
             reply_markup: {
                 inline_keyboard: keyboard
@@ -29,18 +43,18 @@ class Keyboards {
 
     static getPropertiesKeyboard(properties, categoryId) {
         const keyboard = properties.map(property => {
-            const price = property.priceInCZK ? 
-                `${property.priceInCZK.toLocaleString('cs-CZ')} Kč` : 
+            const price = property.priceInCZK ?
+                `${property.priceInCZK.toLocaleString('cs-CZ')} Kč` :
                 `${property.price.toLocaleString('ru-RU')} ₽`;
-            
-            return [{ 
-                text: `${property.name} - ${price}`, 
-                callback_data: `property_${property._id}` 
+
+            return [{
+                text: `${property.name} - ${price}`,
+                callback_data: `property_${property._id}`
             }];
         });
-        
+
         keyboard.push([{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]);
-        
+
         return {
             reply_markup: {
                 inline_keyboard: keyboard
@@ -108,15 +122,15 @@ class Keyboards {
         try {
             const Operator = require('./models/Operator');
             const operators = await Operator.getActiveOperators();
-            
+
             if (operators.length === 0) {
                 // Если в БД нет операторов, используем из конфига как fallback
                 const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
                     { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
                 ]);
-                
+
                 keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
-                
+
                 return {
                     reply_markup: {
                         inline_keyboard: keyboard
@@ -126,14 +140,14 @@ class Keyboards {
 
             // Используем операторов из БД
             const keyboard = operators.map(operator => [
-                { 
-                    text: `${operator.name} ${operator.formattedUsername}`, 
-                    url: operator.getContactUrl() 
+                {
+                    text: `${operator.name} ${operator.formattedUsername}`,
+                    url: operator.getContactUrl()
                 }
             ]);
-            
+
             keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
-            
+
             return {
                 reply_markup: {
                     inline_keyboard: keyboard
@@ -141,14 +155,14 @@ class Keyboards {
             };
         } catch (error) {
             console.error('Error getting operators from DB:', error);
-            
+
             // В случае ошибки возвращаем операторов из конфига
             const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
                 { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
             ]);
-            
+
             keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
-            
+
             return {
                 reply_markup: {
                     inline_keyboard: keyboard
