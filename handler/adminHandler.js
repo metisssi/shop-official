@@ -5,14 +5,20 @@ const Operator = require('../models/Operator');
 class AdminHandler {
     constructor(bot, adminIds = []) {
         this.bot = bot;
-        this.adminIds = adminIds; // Массив ID администраторов
+        this.adminIds = adminIds;
         this.setupAdminCommands();
     }
 
     // Проверка прав администратора
     isAdmin(userId) {
         return this.adminIds.includes(userId);
-    } 
+    }
+
+    // Метод для экранирования специальных символов Markdown
+    escapeMarkdown(text) {
+        if (!text) return '';
+        return text.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+    }
 
     setupAdminCommands() {
         // Главное админ меню
@@ -28,11 +34,9 @@ class AdminHandler {
             if (!this.isAdmin(query.from.id)) return;
             this.handleAdminCallback(query);
         });
-
-        // 🔥 УБРАНО: Обработка фотографий (теперь в app.js)
     }
 
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Обработка загрузки фотографий
+    // Обработка загрузки фотографий
     async handlePhotoUpload(msg) {
         const chatId = msg.chat.id;
         const userId = msg.from.id;
@@ -59,7 +63,6 @@ class AdminHandler {
                 return this.bot.sendMessage(chatId, '❌ Товар не найден');
             }
 
-            // Получаем информацию о фотографии (берем самое большое разрешение)
             const photo = msg.photo[msg.photo.length - 1];
             
             const photoData = {
@@ -75,15 +78,14 @@ class AdminHandler {
             await product.addPhoto(photoData);
             global.adminUtils.clearSession(userId);
 
-            // Обновляем информацию о товаре для получения актуального количества фотографий
             const updatedProduct = await Property.findById(productId);
+            const escapedName = this.escapeMarkdown(product.name);
 
             this.bot.sendMessage(chatId, 
-                `✅ Фотография добавлена к товару "*${product.name}*"!\n\n📸 Всего фотографий: ${updatedProduct.photos.length}`,
+                `✅ Фотография добавлена к товару "${escapedName}"!\n\n📸 Всего фотографий: ${updatedProduct.photos.length}`,
                 { parse_mode: 'Markdown' }
             );
 
-            // Показываем меню управления фотографиями
             setTimeout(() => {
                 this.manageProductPhotos(chatId, null, productId);
             }, 1000);
@@ -250,7 +252,6 @@ class AdminHandler {
 
     // === УПРАВЛЕНИЕ КАТЕГОРИЯМИ ===
 
-    // Меню управления категориями
     showCategoriesMenu(chatId, messageId) {
         const keyboard = {
             inline_keyboard: [
@@ -270,7 +271,6 @@ class AdminHandler {
         });
     }
 
-    // Список всех категорий с кнопками управления
     async showCategoriesList(chatId, messageId) {
         try {
             const categories = await Category.find().sort({ order: 1, name: 1 });
@@ -293,7 +293,8 @@ class AdminHandler {
 
             categories.forEach((category, index) => {
                 const status = category.isActive ? '✅' : '❌';
-                text += `${index + 1}. ${status} *${category.name}*\n\n`;
+                const escapedName = this.escapeMarkdown(category.name);
+                text += `${index + 1}\\. ${status} *${escapedName}*\n\n`;
 
                 keyboard.push([
                     { text: `✏️ ${category.name}`, callback_data: `edit_category_${category._id}` },
@@ -315,7 +316,6 @@ class AdminHandler {
         }
     }
 
-    // Начало добавления новой категории
     async startAddCategory(chatId) {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'adding_category_name', {});
@@ -326,7 +326,6 @@ class AdminHandler {
         });
     }
 
-    // Редактирование категории
     async editCategory(chatId, messageId, categoryId) {
         try {
             const category = await Category.findById(categoryId);
@@ -335,8 +334,9 @@ class AdminHandler {
             }
 
             const status = category.isActive ? '✅ Активна' : '❌ Неактивна';
+            const escapedName = this.escapeMarkdown(category.name);
             const text = `✏️ *Редактирование категории*\n\n` +
-                        `📝 *Название:* ${category.name}\n` +
+                        `📝 *Название:* ${escapedName}\n` +
                         `📊 *Статус:* ${status}`;
 
             const keyboard = {
@@ -363,7 +363,6 @@ class AdminHandler {
         }
     }
 
-    // Удаление категории
     async deleteCategory(chatId, messageId, categoryId) {
         try {
             const category = await Category.findById(categoryId);
@@ -372,9 +371,10 @@ class AdminHandler {
             }
 
             const propertiesCount = await Property.countDocuments({ categoryId });
+            const escapedName = this.escapeMarkdown(category.name);
             
             let text = `🗑 *Удаление категории*\n\n` +
-                      `📝 *Категория:* ${category.name}\n`;
+                      `📝 *Категория:* ${escapedName}\n`;
             
             if (propertiesCount > 0) {
                 text += `⚠️ *В этой категории ${propertiesCount} товаров*\n\n` +
@@ -405,7 +405,6 @@ class AdminHandler {
         }
     }
 
-    // Начало редактирования названия категории
     async startEditCategoryName(chatId, categoryId) {
         const category = await Category.findById(categoryId);
         if (!category) {
@@ -416,13 +415,13 @@ class AdminHandler {
             global.adminUtils.createSession(chatId, 'editing_category_name', { categoryId });
         }
         
+        const escapedName = this.escapeMarkdown(category.name);
         this.bot.sendMessage(chatId, 
-            `✏️ *Редактирование названия категории*\n\nТекущее название: *${category.name}*\n\nВведите новое название:`,
+            `✏️ *Редактирование названия категории*\n\nТекущее название: *${escapedName}*\n\nВведите новое название:`,
             { parse_mode: 'Markdown' }
         );
     }
 
-    // Переключение статуса категории
     async toggleCategoryStatus(chatId, messageId, categoryId) {
         try {
             const category = await Category.findById(categoryId);
@@ -434,7 +433,8 @@ class AdminHandler {
             await category.save();
 
             const status = category.isActive ? 'активирована' : 'деактивирована';
-            this.bot.sendMessage(chatId, `✅ Категория "${category.name}" ${status}!`);
+            const escapedName = this.escapeMarkdown(category.name);
+            this.bot.sendMessage(chatId, `✅ Категория "${escapedName}" ${status}!`);
             
             setTimeout(() => this.showAdminMenu(chatId), 1000);
         } catch (error) {
@@ -443,7 +443,6 @@ class AdminHandler {
         }
     }
 
-    // Подтверждение удаления категории
     async confirmDeleteCategory(chatId, messageId, categoryId) {
         try {
             const category = await Category.findById(categoryId);
@@ -454,9 +453,10 @@ class AdminHandler {
             await Property.deleteMany({ categoryId });
             await Category.findByIdAndDelete(categoryId);
 
+            const escapedName = this.escapeMarkdown(category.name);
             this.bot.editMessageText(
-                `✅ Категория "${category.name}" и все связанные товары удалены!`,
-                { chat_id: chatId, message_id: messageId }
+                `✅ Категория "${escapedName}" и все связанные товары удалены!`,
+                { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }
             );
             
             setTimeout(() => this.showAdminMenu(chatId), 2000);
@@ -468,7 +468,6 @@ class AdminHandler {
 
     // === УПРАВЛЕНИЕ ТОВАРАМИ ===
 
-    // Меню управления товарами
     showProductsMenu(chatId, messageId) {
         const keyboard = {
             inline_keyboard: [
@@ -488,7 +487,6 @@ class AdminHandler {
         });
     }
 
-    // Выбор категории для товара
     async selectCategoryForProduct(chatId, messageId) {
         try {
             const categories = await Category.find({ isActive: true }).sort({ order: 1, name: 1 });
@@ -529,7 +527,6 @@ class AdminHandler {
         }
     }
 
-    // Начало добавления товара в выбранную категорию
     async startAddProduct(chatId, categoryId) {
         try {
             const category = await Category.findById(categoryId);
@@ -541,8 +538,9 @@ class AdminHandler {
                 global.adminUtils.createSession(chatId, 'adding_product_name', { categoryId });
             }
 
+            const escapedName = this.escapeMarkdown(category.name);
             this.bot.sendMessage(chatId, 
-                `➕ *Добавление товара в категорию "${category.name}"*\n\nВведите название товара:`,
+                `➕ *Добавление товара в категорию "${escapedName}"*\n\nВведите название товара:`,
                 { parse_mode: 'Markdown' }
             );
         } catch (error) {
@@ -551,7 +549,6 @@ class AdminHandler {
         }
     }
 
-    // Список всех товаров
     async showProductsList(chatId, messageId) {
         try {
             const products = await Property.find()
@@ -579,9 +576,17 @@ class AdminHandler {
                 const categoryName = product.categoryId ? product.categoryId.name : 'Без категории';
                 const photoIcon = product.photosCount > 0 ? `📸${product.photosCount}` : '📷';
                 
-                text += `${index + 1}. ${status} ${photoIcon} *${product.name}*\n`;
-                text += `   📂 Категория: ${categoryName}\n`;
-                text += `   💰 Цена: ${product.priceInCZK ? product.priceInCZK.toLocaleString('cs-CZ') + ' Kč' : 'не указана'}\n\n`;
+                const escapedName = this.escapeMarkdown(product.name);
+                const escapedCategory = this.escapeMarkdown(categoryName);
+                
+                text += `${index + 1}\\. ${status} ${photoIcon} *${escapedName}*\n`;
+                text += `   📂 Категория: ${escapedCategory}\n`;
+                
+                if (product.priceInCZK) {
+                    text += `   💰 Цена: ${product.priceInCZK.toLocaleString('cs-CZ')} Kč\n\n`;
+                } else {
+                    text += `   💰 Цена: не указана\n\n`;
+                }
 
                 keyboard.push([
                     { text: `✏️ ${product.name}`, callback_data: `edit_product_${product._id}` },
@@ -603,7 +608,6 @@ class AdminHandler {
         }
     }
 
-    // Редактирование товара
     async editProduct(chatId, messageId, productId) {
         try {
             const product = await Property.findById(productId).populate('categoryId');
@@ -616,12 +620,16 @@ class AdminHandler {
             const price = product.priceInCZK ? `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 'не указана';
             const photosInfo = product.photosCount > 0 ? `📸 ${product.photosCount} фото` : '📷 Нет фото';
             
+            const escapedName = this.escapeMarkdown(product.name);
+            const escapedCategory = this.escapeMarkdown(categoryName);
+            const escapedDescription = this.escapeMarkdown(product.description || 'Не указано');
+            
             const text = `✏️ *Редактирование товара*\n\n` +
-                        `📝 *Название:* ${product.name}\n` +
-                        `📂 *Категория:* ${categoryName}\n` +
+                        `📝 *Название:* ${escapedName}\n` +
+                        `📂 *Категория:* ${escapedCategory}\n` +
                         `💰 *Цена:* ${price}\n` +
                         `📷 *Фотографии:* ${photosInfo}\n` +
-                        `📄 *Описание:* ${product.description || 'Не указано'}\n` +
+                        `📄 *Описание:* ${escapedDescription}\n` +
                         `📊 *Статус:* ${status}`;
 
             const keyboard = {
@@ -653,7 +661,6 @@ class AdminHandler {
         }
     }
 
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Управление фотографиями товара
     async manageProductPhotos(chatId, messageId, productId) {
         try {
             const product = await Property.findById(productId);
@@ -661,8 +668,9 @@ class AdminHandler {
                 return this.bot.sendMessage(chatId, '❌ Товар не найден');
             }
 
+            const escapedName = this.escapeMarkdown(product.name);
             let text = `📷 *Управление фотографиями*\n\n`;
-            text += `🏠 *Товар:* ${product.name}\n`;
+            text += `🏠 *Товар:* ${escapedName}\n`;
             text += `📸 *Всего фотографий:* ${product.photosCount}\n\n`;
 
             const keyboard = {
@@ -683,7 +691,6 @@ class AdminHandler {
                 { text: '⬅️ Назад к товару', callback_data: `edit_product_${productId}` }
             ]);
 
-            // Если messageId передан, редактируем существующее сообщение
             if (messageId) {
                 this.bot.editMessageText(text, {
                     chat_id: chatId,
@@ -692,7 +699,6 @@ class AdminHandler {
                     reply_markup: keyboard
                 });
             } else {
-                // Если messageId не передан, отправляем новое сообщение
                 this.bot.sendMessage(chatId, text, {
                     parse_mode: 'Markdown',
                     reply_markup: keyboard
@@ -704,7 +710,6 @@ class AdminHandler {
         }
     }
 
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Начало добавления фотографии
     async startAddProductPhoto(chatId, productId) {
         try {
             const product = await Property.findById(productId);
@@ -722,8 +727,10 @@ class AdminHandler {
                 return this.bot.sendMessage(chatId, '❌ Ошибка системы. Попробуйте позже.');
             }
 
+            const escapedName = this.escapeMarkdown(product.name);
+
             this.bot.sendMessage(chatId, 
-                `📷 *Добавление фотографии*\n\n🏠 *Товар:* ${product.name}\n\n📸 Отправьте фотографию (просто прикрепите изображение к сообщению):`,
+                `📷 *Добавление фотографии*\n\n🏠 Товар: *${escapedName}*\n\n📸 Отправьте фотографию \\(просто прикрепите изображение к сообщению\\):`,
                 { parse_mode: 'Markdown' }
             );
         } catch (error) {
@@ -732,7 +739,6 @@ class AdminHandler {
         }
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Просмотр фотографий товара
     async viewProductPhotos(chatId, messageId, productId) {
         try {
             const product = await Property.findById(productId);
@@ -741,8 +747,9 @@ class AdminHandler {
             }
 
             if (product.photosCount === 0) {
+                const escapedName = this.escapeMarkdown(product.name);
                 return this.bot.editMessageText(
-                    `📷 *Фотографии товара*\n\n🏠 *Товар:* ${product.name}\n\n❌ У этого товара нет фотографий`,
+                    `📷 *Фотографии товара*\n\n🏠 *Товар:* ${escapedName}\n\n❌ У этого товара нет фотографий`,
                     {
                         chat_id: chatId,
                         message_id: messageId,
@@ -756,7 +763,8 @@ class AdminHandler {
                 );
             }
 
-            let text = `📷 *Фотографии товара*\n\n🏠 *Товар:* ${product.name}\n📸 *Количество:* ${product.photosCount}\n\n`;
+            const escapedName = this.escapeMarkdown(product.name);
+            let text = `📷 *Фотографии товара*\n\n🏠 *Товар:* ${escapedName}\n📸 *Количество:* ${product.photosCount}\n\n`;
 
             const keyboard = [];
 
@@ -766,7 +774,7 @@ class AdminHandler {
                 
                 photoRow.push({
                     text: `${isMain}📸 ${index + 1}`,
-                    callback_data: `current_page` // Заглушка
+                    callback_data: `current_page`
                 });
 
                 if (!photo.isMain) {
@@ -789,7 +797,6 @@ class AdminHandler {
                 { text: '⬅️ Назад', callback_data: `manage_prod_photos_${productId}` }
             ]);
 
-            // Отправляем первую фотографию с клавиатурой
             if (product.mainPhoto) {
                 await this.bot.sendPhoto(chatId, product.mainPhoto.fileId, {
                     caption: text,
@@ -797,7 +804,6 @@ class AdminHandler {
                     reply_markup: { inline_keyboard: keyboard }
                 });
                 
-                // Удаляем старое сообщение
                 try {
                     await this.bot.deleteMessage(chatId, messageId);
                 } catch (error) {
@@ -818,7 +824,6 @@ class AdminHandler {
         }
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Установить главную фотографию
     async setMainPhoto(chatId, messageId, productId, photoIndex) {
         try {
             const product = await Property.findById(productId);
@@ -830,7 +835,6 @@ class AdminHandler {
 
             this.bot.sendMessage(chatId, '✅ Главная фотография установлена!');
             
-            // Обновляем список фотографий
             setTimeout(() => this.viewProductPhotos(chatId, messageId, productId), 1000);
 
         } catch (error) {
@@ -839,7 +843,6 @@ class AdminHandler {
         }
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Удалить фотографию
     async deletePhoto(chatId, messageId, productId, photoIndex) {
         try {
             const product = await Property.findById(productId);
@@ -851,7 +854,6 @@ class AdminHandler {
 
             this.bot.sendMessage(chatId, '✅ Фотография удалена!');
             
-            // Обновляем список фотографий
             setTimeout(() => this.viewProductPhotos(chatId, messageId, productId), 1000);
 
         } catch (error) {
@@ -860,7 +862,6 @@ class AdminHandler {
         }
     }
 
-    // Начало редактирования названия товара
     async startEditProductName(chatId, productId) {
         const product = await Property.findById(productId);
         if (!product) {
@@ -871,30 +872,38 @@ class AdminHandler {
             global.adminUtils.createSession(chatId, 'editing_product_name', { productId });
         }
         
+        const escapedName = this.escapeMarkdown(product.name);
         this.bot.sendMessage(chatId, 
-            `✏️ *Редактирование названия товара*\n\nТекущее название: *${product.name}*\n\nВведите новое название:`,
+            `✏️ *Редактирование названия товара*\n\nТекущее название: *${escapedName}*\n\nВведите новое название:`,
             { parse_mode: 'Markdown' }
         );
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Начало редактирования описания товара
     async startEditProductDescription(chatId, productId) {
-        const product = await Property.findById(productId);
-        if (!product) {
-            return this.bot.sendMessage(chatId, '❌ Товар не найден');
-        }
+        try {
+            const product = await Property.findById(productId);
+            if (!product) {
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
 
-        if (global.adminUtils) {
-            global.adminUtils.createSession(chatId, 'editing_product_description', { productId });
+            if (global.adminUtils) {
+                global.adminUtils.createSession(chatId, 'editing_product_description', { productId });
+            }
+            
+            const currentDesc = product.description || 'Отсутствует';
+            const escapedDesc = this.escapeMarkdown(currentDesc);
+            const escapedName = this.escapeMarkdown(product.name);
+            
+            this.bot.sendMessage(chatId, 
+                `📝 *Редактирование описания товара*\n\nТовар: *${escapedName}*\n\nТекущее описание: ${escapedDesc}\n\nВведите новое описание:`,
+                { parse_mode: 'Markdown' }
+            );
+        } catch (error) {
+            console.error('Start edit product description error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при редактировании описания');
         }
-        
-        this.bot.sendMessage(chatId, 
-            `📝 *Редактирование описания товара*\n\nТекущее описание: *${product.description || 'Отсутствует'}*\n\nВведите новое описание:`,
-            { parse_mode: 'Markdown' }
-        );
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Начало редактирования цены товара
     async startEditProductPrice(chatId, productId) {
         const product = await Property.findById(productId);
         if (!product) {
@@ -915,7 +924,6 @@ class AdminHandler {
         );
     }
 
-    // Переключение статуса товара
     async toggleProductStatus(chatId, messageId, productId) {
         try {
             const product = await Property.findById(productId);
@@ -927,7 +935,8 @@ class AdminHandler {
             await product.save();
 
             const status = product.isAvailable ? 'активирован' : 'деактивирован';
-            this.bot.sendMessage(chatId, `✅ Товар "${product.name}" ${status}!`);
+            const escapedName = this.escapeMarkdown(product.name);
+            this.bot.sendMessage(chatId, `✅ Товар "${escapedName}" ${status}!`);
             
             setTimeout(() => this.showAdminMenu(chatId), 1000);
         } catch (error) {
@@ -936,7 +945,6 @@ class AdminHandler {
         }
     }
 
-    // Удаление товара
     async deleteProduct(chatId, messageId, productId) {
         try {
             const product = await Property.findById(productId);
@@ -946,9 +954,10 @@ class AdminHandler {
 
             const price = product.priceInCZK ? `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 'не указана';
             const photosInfo = product.photosCount > 0 ? `\n📸 *Фотографий:* ${product.photosCount}` : '';
+            const escapedName = this.escapeMarkdown(product.name);
             
             const text = `🗑 *Удаление товара*\n\n` +
-                        `📝 *Товар:* ${product.name}\n` +
+                        `📝 *Товар:* ${escapedName}\n` +
                         `💰 *Цена:* ${price}${photosInfo}\n\n` +
                         `Вы уверены, что хотите удалить этот товар?`;
 
@@ -973,7 +982,6 @@ class AdminHandler {
         }
     }
 
-    // Подтверждение удаления товара
     async confirmDeleteProduct(chatId, messageId, productId) {
         try {
             const product = await Property.findById(productId);
@@ -983,9 +991,10 @@ class AdminHandler {
 
             await Property.findByIdAndDelete(productId);
 
+            const escapedName = this.escapeMarkdown(product.name);
             this.bot.editMessageText(
-                `✅ Товар "${product.name}" удален!`,
-                { chat_id: chatId, message_id: messageId }
+                `✅ Товар "${escapedName}" удален!`,
+                { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }
             );
             
             setTimeout(() => this.showAdminMenu(chatId), 2000);
@@ -997,7 +1006,6 @@ class AdminHandler {
 
     // === УПРАВЛЕНИЕ ОПЕРАТОРАМИ ===
 
-    // Меню управления операторами
     showOperatorsMenu(chatId, messageId) {
         const keyboard = {
             inline_keyboard: [
@@ -1017,7 +1025,6 @@ class AdminHandler {
         });
     }
 
-    // Список всех операторов
     async showOperatorsList(chatId, messageId) {
         try {
             const operators = await Operator.find().sort({ order: 1, name: 1 });
@@ -1047,7 +1054,9 @@ class AdminHandler {
                     residential: 'Жилая'
                 };
                 
-                text += `${index + 1}. ${status} *${operator.name}*\n`;
+                const escapedName = this.escapeMarkdown(operator.name);
+                
+                text += `${index + 1}\\. ${status} *${escapedName}*\n`;
                 text += `   📱 ${operator.formattedUsername}\n`;
                 text += `   🏷 ${specialization[operator.specialization]}\n\n`;
 
@@ -1071,7 +1080,6 @@ class AdminHandler {
         }
     }
 
-    // Начало добавления нового оператора
     async startAddOperator(chatId) {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'adding_operator_name', {});
@@ -1082,7 +1090,6 @@ class AdminHandler {
         });
     }
 
-    // Редактирование оператора
     async editOperator(chatId, messageId, operatorId) {
         try {
             const operator = await Operator.findById(operatorId);
@@ -1098,8 +1105,10 @@ class AdminHandler {
                 residential: 'Жилая'
             };
             
+            const escapedName = this.escapeMarkdown(operator.name);
+            
             const text = `✏️ *Редактирование оператора*\n\n` +
-                        `👤 *Имя:* ${operator.name}\n` +
+                        `👤 *Имя:* ${escapedName}\n` +
                         `📱 *Username:* ${operator.formattedUsername}\n` +
                         `🏷 *Специализация:* ${specialization[operator.specialization]}\n` +
                         `📊 *Статус:* ${status}`;
@@ -1131,7 +1140,6 @@ class AdminHandler {
         }
     }
 
-    // Удаление оператора
     async deleteOperator(chatId, messageId, operatorId) {
         try {
             const operator = await Operator.findById(operatorId);
@@ -1139,8 +1147,10 @@ class AdminHandler {
                 return this.bot.sendMessage(chatId, '❌ Оператор не найден');
             }
 
+            const escapedName = this.escapeMarkdown(operator.name);
+
             const text = `🗑 *Удаление оператора*\n\n` +
-                        `👤 *Оператор:* ${operator.name}\n` +
+                        `👤 *Оператор:* ${escapedName}\n` +
                         `📱 *Username:* ${operator.formattedUsername}\n\n` +
                         `Вы уверены, что хотите удалить этого оператора?`;
 
@@ -1165,7 +1175,6 @@ class AdminHandler {
         }
     }
 
-    // Начало редактирования имени оператора
     async startEditOperatorName(chatId, operatorId) {
         const operator = await Operator.findById(operatorId);
         if (!operator) {
@@ -1176,13 +1185,13 @@ class AdminHandler {
             global.adminUtils.createSession(chatId, 'editing_operator_name', { operatorId });
         }
         
+        const escapedName = this.escapeMarkdown(operator.name);
         this.bot.sendMessage(chatId, 
-            `✏️ *Редактирование имени оператора*\n\nТекущее имя: *${operator.name}*\n\nВведите новое имя:`,
+            `✏️ *Редактирование имени оператора*\n\nТекущее имя: *${escapedName}*\n\nВведите новое имя:`,
             { parse_mode: 'Markdown' }
         );
     }
 
-    // Начало редактирования username оператора
     async startEditOperatorUsername(chatId, operatorId) {
         const operator = await Operator.findById(operatorId);
         if (!operator) {
@@ -1199,7 +1208,6 @@ class AdminHandler {
         );
     }
 
-    // Переключение статуса оператора
     async toggleOperatorStatus(chatId, messageId, operatorId) {
         try {
             const operator = await Operator.findById(operatorId);
@@ -1211,7 +1219,8 @@ class AdminHandler {
             await operator.save();
 
             const status = operator.isActive ? 'активирован' : 'деактивирован';
-            this.bot.sendMessage(chatId, `✅ Оператор "${operator.name}" ${status}!`);
+            const escapedName = this.escapeMarkdown(operator.name);
+            this.bot.sendMessage(chatId, `✅ Оператор "${escapedName}" ${status}!`);
             
             setTimeout(() => this.showAdminMenu(chatId), 1000);
         } catch (error) {
@@ -1220,7 +1229,6 @@ class AdminHandler {
         }
     }
 
-    // Подтверждение удаления оператора
     async confirmDeleteOperator(chatId, messageId, operatorId) {
         try {
             const operator = await Operator.findById(operatorId);
@@ -1230,9 +1238,10 @@ class AdminHandler {
 
             await Operator.findByIdAndDelete(operatorId);
 
+            const escapedName = this.escapeMarkdown(operator.name);
             this.bot.editMessageText(
-                `✅ Оператор "${operator.name}" удален!`,
-                { chat_id: chatId, message_id: messageId }
+                `✅ Оператор "${escapedName}" удален!`,
+                { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }
             );
             
             setTimeout(() => this.showAdminMenu(chatId), 2000);
