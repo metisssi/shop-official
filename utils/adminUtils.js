@@ -49,6 +49,20 @@ class AdminUtils {
         console.log('✅ Сессия удалена:', deleted);
         console.log('📋 Оставшиеся сессии:', this.userSessions.size);
     }
+
+    // ИСПРАВЛЕНО: Добавляем отсутствующий метод clearOldSessions
+    clearOldSessions() {
+        const now = Date.now();
+        const maxAge = 30 * 60 * 1000; // 30 минут
+
+        for (const [userId, session] of this.userSessions.entries()) {
+            if (now - session.createdAt > maxAge) {
+                console.log(`🧹 Удаление старой сессии пользователя: ${userId}`);
+                this.userSessions.delete(userId);
+            }
+        }
+    }
+
     // === ВАЛИДАЦИЯ ДАННЫХ ===
 
     // Валидация названия
@@ -293,114 +307,76 @@ class AdminUtils {
         }
     }
 
-    // === ЭКСПОРТ ДАННЫХ ===
+    // === ОЧИСТКА ДАННЫХ ===
 
-    // Экспорт категорий в CSV формате
-    async exportCategories() {
-        try {
-            const categories = await Category.find().sort({ order: 1, name: 1 });
-
-            let csv = 'ID,Название,Описание,Активна,Порядок,Создана,Обновлена\n';
-
-            categories.forEach(cat => {
-                const row = [
-                    cat._id,
-                    `"${cat.name.replace(/"/g, '""')}"`,
-                    `"${(cat.description || '').replace(/"/g, '""')}"`,
-                    cat.isActive ? 'Да' : 'Нет',
-                    cat.order,
-                    this.formatDate(cat.createdAt),
-                    this.formatDate(cat.updatedAt)
-                ].join(',');
-                csv += row + '\n';
-            });
-
-            return csv;
-        } catch (error) {
-            console.error('Export categories error:', error);
-            throw error;
-        }
+    // Очистка старых сессий (запускать периодически)
+    startSessionCleaner() {
+        setInterval(() => {
+            this.clearOldSessions();
+        }, 60000); // Каждую минуту
     }
 
-    // Экспорт недвижимости в CSV формате
-    async exportProperties() {
+    // Очистка неактивных категорий без недвижимости
+    async cleanupInactiveCategories() {
         try {
-            const properties = await Property.find()
-                .populate('categoryId')
-                .sort({ order: 1, name: 1 });
+            const inactiveCategories = await Category.find({ isActive: false });
+            const cleanedIds = [];
 
-            let csv = 'ID,Название,Категория,Описание,Цена_RUB,Цена_CZK,Валюта,Площадь,Комнаты,Этаж,Всего_этажей,Адрес,Доступна,Порядок,Создана,Обновлена\n';
-
-            properties.forEach(prop => {
-                const row = [
-                    prop._id,
-                    `"${prop.name.replace(/"/g, '""')}"`,
-                    `"${prop.categoryId ? prop.categoryId.name.replace(/"/g, '""') : 'Без категории'}"`,
-                    `"${(prop.description || '').replace(/"/g, '""')}"`,
-                    prop.price || '',
-                    prop.priceInCZK || '',
-                    prop.currency || 'RUB',
-                    prop.specifications?.area || '',
-                    prop.specifications?.rooms || '',
-                    prop.specifications?.floor || '',
-                    prop.specifications?.totalFloors || '',
-                    `"${(prop.specifications?.address || '').replace(/"/g, '""')}"`,
-                    prop.isAvailable ? 'Да' : 'Нет',
-                    prop.order,
-                    this.formatDate(prop.createdAt),
-                    this.formatDate(prop.updatedAt)
-                ].join(',');
-                csv += row + '\n';
-            });
-
-            return csv;
-        } catch (error) {
-            console.error('Export properties error:', error);
-            throw error;
-        }
-    }
-
-    // === ПОИСК И ФИЛЬТРАЦИЯ ===
-
-    // Поиск категорий
-    async searchCategories(query) {
-        try {
-            const regex = new RegExp(query, 'i');
-            return await Category.find({
-                $or: [
-                    { name: regex },
-                    { description: regex }
-                ]
-            }).sort({ order: 1, name: 1 });
-        } catch (error) {
-            console.error('Search categories error:', error);
-            throw error;
-        }
-    }
-
-    // Поиск недвижимости
-    async searchProperties(query, categoryId = null) {
-        try {
-            const regex = new RegExp(query, 'i');
-            const filter = {
-                $or: [
-                    { name: regex },
-                    { description: regex },
-                    { 'specifications.address': regex }
-                ]
-            };
-
-            if (categoryId) {
-                filter.categoryId = categoryId;
+            for (const category of inactiveCategories) {
+                const propertiesCount = await Property.countDocuments({ categoryId: category._id });
+                if (propertiesCount === 0) {
+                    await Category.findByIdAndDelete(category._id);
+                    cleanedIds.push(category._id);
+                }
             }
 
-            return await Property.find(filter)
-                .populate('categoryId')
-                .sort({ order: 1, name: 1 });
+            return cleanedIds;
         } catch (error) {
-            console.error('Search properties error:', error);
+            console.error('Cleanup inactive categories error:', error);
             throw error;
         }
+    }
+
+    // === УВЕДОМЛЕНИЯ АДМИНИСТРАТОРОВ ===
+
+    // Отправить уведомление всем администраторам
+    async notifyAdmins(message, keyboard = null) {
+        const adminConfig = require('../config/adminConfig');
+        const adminIds = adminConfig.getAdminIds();
+
+        const promises = adminIds.map(adminId => {
+            const options = { parse_mode: 'Markdown' };
+            if (keyboard) {
+                options.reply_markup = keyboard;
+            }
+
+            return this.bot.sendMessage(adminId, message, options)
+                .catch(error => {
+                    console.error(`Failed to notify admin ${adminId}:`, error);
+                });
+        });
+
+        await Promise.allSettled(promises);
+    }
+
+    // Уведомление о новом заказе
+    async notifyNewOrder(order) {
+        const user = await User.findOne({ userId: order.userId });
+        const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username : 'Неизвестный';
+
+        const message = `🔔 *Новый заказ!*\n\n` +
+            `👤 *Клиент:* ${userName}\n` +
+            `💰 *Сумма:* ${this.formatPrice(order.totalAmount)}\n` +
+            `📝 *Товаров:* ${order.items.length}\n` +
+            `🕐 *Время:* ${this.formatDate(order.createdAt)}`;
+
+        const keyboard = {
+            inline_keyboard: [[
+                { text: '👀 Посмотреть заказ', callback_data: `admin_view_order_${order._id}` }
+            ]]
+        };
+
+        await this.notifyAdmins(message, keyboard);
     }
 
     // === УТИЛИТЫ ДЛЯ РАБОТЫ С СООБЩЕНИЯМИ ===
@@ -452,177 +428,6 @@ class AdminUtils {
             hasNext: page < totalPages,
             hasPrev: page > 1
         };
-    }
-
-    // === BACKUP И RESTORE ===
-
-    // Создать backup всех данных
-    async createBackup() {
-        try {
-            const [categories, properties, orders, users] = await Promise.all([
-                Category.find(),
-                Property.find(),
-                Order.find(),
-                User.find()
-            ]);
-
-            const backup = {
-                timestamp: new Date().toISOString(),
-                version: '1.0',
-                data: {
-                    categories,
-                    properties,
-                    orders,
-                    users
-                }
-            };
-
-            return JSON.stringify(backup, null, 2);
-        } catch (error) {
-            console.error('Create backup error:', error);
-            throw error;
-        }
-    }
-
-    // === УВЕДОМЛЕНИЯ АДМИНИСТРАТОРОВ ===
-
-    // Отправить уведомление всем администраторам
-    async notifyAdmins(message, keyboard = null) {
-        const adminConfig = require('../config/adminConfig');
-        const adminIds = adminConfig.getAdminIds();
-
-        const promises = adminIds.map(adminId => {
-            const options = { parse_mode: 'Markdown' };
-            if (keyboard) {
-                options.reply_markup = keyboard;
-            }
-
-            return this.bot.sendMessage(adminId, message, options)
-                .catch(error => {
-                    console.error(`Failed to notify admin ${adminId}:`, error);
-                });
-        });
-
-        await Promise.allSettled(promises);
-    }
-
-    // Уведомление о новом заказе
-    async notifyNewOrder(order) {
-        const user = await User.findOne({ userId: order.userId });
-        const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username : 'Неизвестный';
-
-        const message = `🔔 *Новый заказ!*\n\n` +
-            `👤 *Клиент:* ${userName}\n` +
-            `💰 *Сумма:* ${this.formatPrice(order.totalAmount)}\n` +
-            `📝 *Товаров:* ${order.items.length}\n` +
-            `🕐 *Время:* ${this.formatDate(order.createdAt)}`;
-
-        const keyboard = {
-            inline_keyboard: [[
-                { text: '👀 Посмотреть заказ', callback_data: `admin_view_order_${order._id}` }
-            ]]
-        };
-
-        await this.notifyAdmins(message, keyboard);
-    }
-
-    // === ОЧИСТКА ДАННЫХ ===
-
-    // Очистка старых сессий (запускать периодически)
-    startSessionCleaner() {
-        setInterval(() => {
-            this.clearOldSessions();
-        }, 60000); // Каждую минуту
-    }
-
-    // Очистка неактивных категорий без недвижимости
-    async cleanupInactiveCategories() {
-        try {
-            const inactiveCategories = await Category.find({ isActive: false });
-            const cleanedIds = [];
-
-            for (const category of inactiveCategories) {
-                const propertiesCount = await Property.countDocuments({ categoryId: category._id });
-                if (propertiesCount === 0) {
-                    await Category.findByIdAndDelete(category._id);
-                    cleanedIds.push(category._id);
-                }
-            }
-
-            return cleanedIds;
-        } catch (error) {
-            console.error('Cleanup inactive categories error:', error);
-            throw error;
-        }
-    }
-
-    // === ГЕНЕРАЦИЯ ОТЧЕТОВ ===
-
-    // Генерация отчета по продажам за период
-    async generateSalesReport(startDate, endDate) {
-        try {
-            const orders = await Order.find({
-                status: 'completed',
-                createdAt: { $gte: startDate, $lte: endDate }
-            }).populate({
-                path: 'items.propertyId',
-                populate: { path: 'categoryId' }
-            });
-
-            const report = {
-                period: { start: startDate, end: endDate },
-                totalOrders: orders.length,
-                totalRevenue: orders.reduce((sum, order) => sum + order.totalAmount, 0),
-                avgOrderValue: 0,
-                topCategories: {},
-                topProperties: {},
-                dailySales: {}
-            };
-
-            // Расчет среднего чека
-            if (report.totalOrders > 0) {
-                report.avgOrderValue = report.totalRevenue / report.totalOrders;
-            }
-
-            // Анализ по категориям и объектам
-            orders.forEach(order => {
-                const date = order.createdAt.toISOString().split('T')[0];
-
-                // Продажи по дням
-                if (!report.dailySales[date]) {
-                    report.dailySales[date] = { orders: 0, revenue: 0 };
-                }
-                report.dailySales[date].orders++;
-                report.dailySales[date].revenue += order.totalAmount;
-
-                // Анализ товаров
-                order.items.forEach(item => {
-                    if (item.propertyId) {
-                        const categoryName = item.propertyId.categoryId?.name || 'Без категории';
-                        const propertyName = item.propertyId.name;
-
-                        // Топ категории
-                        if (!report.topCategories[categoryName]) {
-                            report.topCategories[categoryName] = { orders: 0, revenue: 0 };
-                        }
-                        report.topCategories[categoryName].orders++;
-                        report.topCategories[categoryName].revenue += item.total;
-
-                        // Топ объекты
-                        if (!report.topProperties[propertyName]) {
-                            report.topProperties[propertyName] = { orders: 0, revenue: 0 };
-                        }
-                        report.topProperties[propertyName].orders++;
-                        report.topProperties[propertyName].revenue += item.total;
-                    }
-                });
-            });
-
-            return report;
-        } catch (error) {
-            console.error('Generate sales report error:', error);
-            throw error;
-        }
     }
 }
 

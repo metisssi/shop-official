@@ -9,18 +9,55 @@ const AdminHandler = require('./handler/adminHandler');
 const AdminUtils = require('./utils/adminUtils');
 const adminConfig = require('./config/adminConfig');
 
+console.log('🚀 Запуск приложения...');
+
+// Проверка конфигурации
+console.log('🔧 Проверка конфигурации:');
+console.log('- BOT_TOKEN:', config.BOT_TOKEN ? '✅ Установлен' : '❌ Отсутствует');
+console.log('- MONGODB_URI:', config.MONGODB_URI ? '✅ Установлен' : '❌ Отсутствует');
+console.log('- OPERATORS:', Object.keys(config.OPERATORS).length, 'операторов');
+console.log('- ADMIN_IDS:', adminConfig.getAdminIds().length, 'администраторов');
+
 class RealEstateBot {
     constructor() {
-        this.bot = new TelegramBot(config.BOT_TOKEN, { polling: true });
-        this.database = new Database();
-        this.clientHandler = new ClientHandler(this.bot, this.database);
+        console.log('🤖 Инициализация бота...');
         
-        // Инициализация админ модулей
-        this.adminUtils = new AdminUtils(this.bot);
-        this.adminHandler = new AdminHandler(this.bot, adminConfig.getAdminIds());
+        try {
+            this.bot = new TelegramBot(config.BOT_TOKEN, { polling: true });
+            console.log('✅ Telegram Bot API подключен');
+        } catch (error) {
+            console.error('❌ Ошибка подключения к Telegram Bot API:', error);
+            process.exit(1);
+        }
+
+        try {
+            this.database = new Database();
+            console.log('✅ Database класс создан');
+        } catch (error) {
+            console.error('❌ Ошибка создания Database:', error);
+            process.exit(1);
+        }
+
+        try {
+            this.clientHandler = new ClientHandler(this.bot, this.database);
+            console.log('✅ ClientHandler создан');
+        } catch (error) {
+            console.error('❌ Ошибка создания ClientHandler:', error);
+            process.exit(1);
+        }
         
-        // Делаем adminUtils глобальным для доступа из других модулей
-        global.adminUtils = this.adminUtils;
+        try {
+            // Инициализация админ модулей
+            this.adminUtils = new AdminUtils(this.bot);
+            this.adminHandler = new AdminHandler(this.bot, adminConfig.getAdminIds());
+            
+            // Делаем adminUtils глобальным для доступа из других модулей
+            global.adminUtils = this.adminUtils;
+            console.log('✅ Админ модули созданы');
+        } catch (error) {
+            console.error('❌ Ошибка создания админ модулей:', error);
+            process.exit(1);
+        }
         
         this.setupHandlers();
         
@@ -31,7 +68,7 @@ class RealEstateBot {
         this.bot.getUpdates({ offset: -1 }).then(() => {
             console.log('🧹 Старые обновления очищены');
         }).catch(err => {
-            console.log('Не удалось очистить обновления:', err.message);
+            console.log('⚠️ Не удалось очистить обновления:', err.message);
         });
     }
 
@@ -42,14 +79,28 @@ class RealEstateBot {
     }
 
     setupHandlers() {
+        console.log('⚙️ Настройка обработчиков событий...');
+
+        // Обработка ошибок бота
+        this.bot.on('polling_error', (error) => {
+            console.error('❌ Polling error:', error);
+        });
+
+        this.bot.on('error', (error) => {
+            console.error('❌ Bot error:', error);
+        });
+
         // Команда /start
         this.bot.onText(/\/start/, (msg) => {
+            console.log('📥 Получена команда /start от пользователя:', msg.from.id);
             this.clientHandler.handleStart(msg);
         });
 
         // Команда /admin (только для администраторов)
         this.bot.onText(/\/admin/, (msg) => {
+            console.log('📥 Получена команда /admin от пользователя:', msg.from.id);
             if (!adminConfig.isAdmin(msg.from.id)) {
+                console.log('🚫 Пользователь не является администратором');
                 return this.bot.sendMessage(msg.chat.id, '❌ У вас нет прав администратора');
             }
             this.adminHandler.showAdminMenu(msg.chat.id);
@@ -57,28 +108,49 @@ class RealEstateBot {
 
         // Обработка фотографий
         this.bot.on('photo', (msg) => {
-            console.log('Получена фотография от пользователя:', msg.from.id);
+            console.log('📸 Получена фотография от пользователя:', msg.from.id);
+            console.log('📝 Данные сообщения:', {
+                chat_id: msg.chat.id,
+                message_id: msg.message_id,
+                photo_count: msg.photo.length,
+                caption: msg.caption
+            });
             
             // Проверяем, что это администратор
             if (!adminConfig.isAdmin(msg.from.id)) {
-                console.log('Пользователь не является администратором');
-                return;
+                console.log('🚫 Пользователь не является администратором');
+                return this.bot.sendMessage(msg.chat.id, '❌ Только администраторы могут загружать фотографии');
             }
             
+            // Проверяем наличие активной сессии
+            const session = this.adminUtils.getSession(msg.from.id);
+            console.log('🔍 Проверка сессии перед загрузкой фотографии:', session);
+            
+            if (!session || session.type !== 'uploading_product_photo') {
+                console.log('❌ Нет активной сессии загрузки фотографии');
+                return this.bot.sendMessage(msg.chat.id, 
+                    '❌ Сначала выберите товар для добавления фотографии через команду /admin → Управление товарами → Редактировать товар → Управление фото → Добавить фото');
+            }
+            
+            console.log('✅ Передача фотографии в AdminHandler');
             // Передаем обработку фотографии в AdminHandler
             this.adminHandler.handlePhotoUpload(msg);
         });
 
         // Обработка callback запросов
         this.bot.on('callback_query', (callbackQuery) => {
+            console.log('📞 Получен callback от пользователя:', callbackQuery.from.id, 'данные:', callbackQuery.data);
+            
             // Если это админский callback и пользователь админ
             if (adminConfig.isAdmin(callbackQuery.from.id) && 
                 callbackQuery.data.startsWith('admin_')) {
+                console.log('👑 Обработка админского callback');
                 // AdminHandler уже обрабатывает админские callback'и
                 return;
             }
             
             // Обычные callback'и для клиентов
+            console.log('👤 Обработка клиентского callback');
             this.clientHandler.handleCallback(callbackQuery);
         });
 
@@ -90,17 +162,22 @@ class RealEstateBot {
             // Пропускаем фотографии (они обрабатываются отдельно)
             if (msg.photo) return;
             
+            console.log('💬 Получено текстовое сообщение от пользователя:', msg.from.id);
+            
             // Проверяем, есть ли активная админская сессия
             const session = this.adminUtils.getSession(msg.from.id);
             if (session && adminConfig.isAdmin(msg.from.id)) {
+                console.log('👑 Обработка админского ввода');
                 this.handleAdminInput(msg, session);
                 return;
             }
             
             // Обычная обработка для клиентов
+            console.log('👤 Обработка клиентского сообщения');
             this.clientHandler.handleTextMessage(msg);
         });
 
+        console.log('✅ Обработчики событий настроены');
         console.log('🤖 Бот запущен!');
         console.log(`👑 Администраторы: ${adminConfig.getAdminIds().join(', ')}`);
     }
@@ -585,5 +662,11 @@ class RealEstateBot {
     }
 }
 
-// Запуск бота
-new RealEstateBot();
+// Запуск бота с обработкой ошибок
+try {
+    console.log('🎯 Создание экземпляра бота...');
+    new RealEstateBot();
+} catch (error) {
+    console.error('💥 Критическая ошибка при запуске:', error);
+    process.exit(1);
+}
