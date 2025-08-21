@@ -1,4 +1,4 @@
-// clientHandler.js - Основная логика клиента (обновленная для MongoDB)
+// clientHandler.js - Исправлен метод showOperators
 const config = require('../config/config');
 const Keyboards = require('../keyboards');
 
@@ -463,14 +463,32 @@ class ClientHandler {
         }
     }
 
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД
     async showOperators(chatId, messageId) {
         const text = `📞 Наши операторы:\n\nНажмите на имя оператора, чтобы написать ему в личные сообщения:`;
 
-        await this.bot.editMessageText(text, {
-            chat_id: chatId,
-            message_id: messageId,
-            ...Keyboards.getOperatorsKeyboard()
-        });
+        try {
+            // Здесь добавлен await!
+            const operatorsKeyboard = await Keyboards.getOperatorsKeyboard();
+            
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                ...operatorsKeyboard
+            });
+        } catch (error) {
+            console.error('Ошибка при показе операторов:', error);
+            
+            // Fallback на стартовое меню в случае ошибки
+            await this.bot.editMessageText(
+                "❌ Ошибка при загрузке списка операторов. Попробуйте позже.",
+                {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    ...Keyboards.getStartKeyboard()
+                }
+            );
+        }
     }
 }
 
