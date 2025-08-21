@@ -42,6 +42,20 @@ class RealEstateBot {
             this.adminHandler.showAdminMenu(msg.chat.id);
         });
 
+        // 🔥 ДОБАВЛЕНО: Обработка фотографий
+        this.bot.on('photo', (msg) => {
+            console.log('Получена фотография от пользователя:', msg.from.id);
+            
+            // Проверяем, что это администратор
+            if (!adminConfig.isAdmin(msg.from.id)) {
+                console.log('Пользователь не является администратором');
+                return;
+            }
+            
+            // Передаем обработку фотографии в AdminHandler
+            this.adminHandler.handlePhotoUpload(msg);
+        });
+
         // Обработка callback запросов
         this.bot.on('callback_query', (callbackQuery) => {
             // Если это админский callback и пользователь админ
@@ -59,6 +73,9 @@ class RealEstateBot {
         this.bot.on('message', (msg) => {
             // Пропускаем команды
             if (msg.text && msg.text.startsWith('/')) return;
+            
+            // 🔥 ДОБАВЛЕНО: Пропускаем фотографии (они обрабатываются отдельно)
+            if (msg.photo) return;
             
             // Проверяем, есть ли активная админская сессия
             const session = this.adminUtils.getSession(msg.from.id);
@@ -80,6 +97,12 @@ class RealEstateBot {
         const chatId = msg.chat.id;
         const userId = msg.from.id;
         const text = msg.text;
+
+        console.log('Обработка админского ввода:', {
+            userId,
+            sessionType: session.type,
+            text: text ? text.substring(0, 50) : 'no text'
+        });
 
         try {
             switch (session.type) {
@@ -103,8 +126,9 @@ class RealEstateBot {
                     await this.handleEditProductName(chatId, userId, text, session.data.productId);
                     break;
                     
+                // 🔥 НОВОЕ: Обработка редактирования описания
                 case 'editing_product_description':
-                    await this.handleProductDescriptionInput(chatId, userId, text, session.data.productId);
+                    await this.handleEditProductDescription(chatId, userId, text, session.data.productId);
                     break;
                     
                 case 'editing_product_price':
@@ -128,6 +152,7 @@ class RealEstateBot {
                     break;
                     
                 default:
+                    console.log('Неизвестный тип сессии:', session.type);
                     // Неизвестный тип сессии, очищаем
                     this.adminUtils.clearSession(userId);
                     this.bot.sendMessage(chatId, '❌ Сессия устарела. Попробуйте еще раз.');
@@ -239,13 +264,14 @@ class RealEstateBot {
                 currency: 'CZK', // Всегда CZK
                 specifications: {},
                 isAvailable: true,
-                order: 0
+                order: 0,
+                photos: [] // 🔥 НОВОЕ: Инициализируем пустой массив фотографий
             });
 
             await product.save();
             this.adminUtils.clearSession(userId);
             
-            this.bot.sendMessage(chatId, `✅ Товар "*${sessionData.productName}*" создан!\n\n💰 Цена: ${this.formatPrice(priceCZK, 'CZK')}`, {
+            this.bot.sendMessage(chatId, `✅ Товар "*${sessionData.productName}*" создан!\n\n💰 Цена: ${this.formatPrice(priceCZK, 'CZK')}\n\n📷 Теперь вы можете добавить фотографии через редактирование товара.`, {
                 parse_mode: 'Markdown'
             });
             
@@ -281,7 +307,10 @@ class RealEstateBot {
         }
     }
 
-    async handleProductDescriptionInput(chatId, userId, text, productId) {
+    // 🔥 НОВЫЙ МЕТОД: Обработка редактирования описания товара
+    async handleEditProductDescription(chatId, userId, text, productId) {
+        console.log('Обработка редактирования описания товара:', { userId, productId });
+        
         const validation = this.adminUtils.validateDescription(text);
         if (!validation.valid) {
             return this.bot.sendMessage(chatId, `❌ ${validation.error}\nПопробуйте еще раз:`);

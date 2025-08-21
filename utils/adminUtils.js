@@ -9,7 +9,7 @@ class AdminUtils {
     constructor(bot) {
         this.bot = bot;
         this.userSessions = new Map(); // Хранение сессий пользователей
-        
+
         // Курсы валют (в реальном проекте лучше получать из API)
         this.exchangeRates = {
             RUB_CZK: 0.4,   // 1 RUB = 0.4 CZK
@@ -20,34 +20,35 @@ class AdminUtils {
     // === УПРАВЛЕНИЕ СЕССИЯМИ ===
 
     // Создать сессию пользователя
+    // Отладочный метод для создания сессии
     createSession(userId, type, data = {}) {
+        console.log('🔧 Создание сессии:', { userId, type, data });
+
         this.userSessions.set(userId, {
             type,
             data,
             createdAt: Date.now()
         });
+
+        console.log('✅ Сессия создана. Всего активных сессий:', this.userSessions.size);
+        console.log('📋 Все активные сессии:', Array.from(this.userSessions.entries()).map(([id, session]) => ({ id, type: session.type })));
     }
 
-    // Получить сессию пользователя
+    // Отладочный метод для получения сессии
     getSession(userId) {
-        return this.userSessions.get(userId);
+        const session = this.userSessions.get(userId);
+        console.log('🔍 Запрос сессии для пользователя:', userId);
+        console.log('📄 Найденная сессия:', session || 'отсутствует');
+        return session;
     }
 
-    // Удалить сессию пользователя
+    // Отладочный метод для удаления сессии
     clearSession(userId) {
-        this.userSessions.delete(userId);
+        console.log('🗑️ Удаление сессии для пользователя:', userId);
+        const deleted = this.userSessions.delete(userId);
+        console.log('✅ Сессия удалена:', deleted);
+        console.log('📋 Оставшиеся сессии:', this.userSessions.size);
     }
-
-    // Очистить старые сессии (старше 5 минут)
-    clearOldSessions() {
-        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-        for (const [userId, session] of this.userSessions.entries()) {
-            if (session.createdAt < fiveMinutesAgo) {
-                this.userSessions.delete(userId);
-            }
-        }
-    }
-
     // === ВАЛИДАЦИЯ ДАННЫХ ===
 
     // Валидация названия
@@ -55,35 +56,35 @@ class AdminUtils {
         if (!name || typeof name !== 'string') {
             return { valid: false, error: 'Название не может быть пустым' };
         }
-        
+
         const trimmed = name.trim();
         if (trimmed.length < 2) {
             return { valid: false, error: 'Название должно содержать минимум 2 символа' };
         }
-        
+
         if (trimmed.length > 100) {
             return { valid: false, error: 'Название не должно превышать 100 символов' };
         }
-        
+
         return { valid: true, value: trimmed };
     }
 
     // Валидация описания
     validateDescription(description) {
         if (!description) return { valid: true, value: '' };
-        
+
         const trimmed = description.trim();
         if (trimmed.length > 500) {
             return { valid: false, error: 'Описание не должно превышать 500 символов' };
         }
-        
+
         return { valid: true, value: trimmed };
     }
 
     // Валидация цены с поддержкой валют
     validatePrice(priceInput) {
         const parsed = this.parsePriceWithCurrency(priceInput);
-        
+
         if (!parsed.valid) {
             return parsed;
         }
@@ -94,16 +95,16 @@ class AdminUtils {
         if (currency === 'CZK' && value < 50000) {
             return { valid: false, error: 'Минимальная цена: 50,000 Kč' };
         }
-        
+
         if (currency === 'RUB' && value < 100000) {
             return { valid: false, error: 'Минимальная цена: 100,000 ₽' };
         }
-        
+
         // Проверка максимальных значений
         if (value > 500000000) {
             return { valid: false, error: 'Максимальная цена: 500,000,000' };
         }
-        
+
         return { valid: true, value: Math.round(value), currency };
     }
 
@@ -115,7 +116,7 @@ class AdminUtils {
 
         // Убираем лишние пробелы и приводим к нижнему регистру
         const input = text.trim().toLowerCase();
-        
+
         // Регулярные выражения для парсинга
         const patterns = [
             /^(\d+(?:\.\d+)?)\s*(czk|чеш|крон|кчк|kč)$/i,  // CZK
@@ -131,8 +132,8 @@ class AdminUtils {
 
                 if (match[2]) {
                     const currencyStr = match[2].toLowerCase();
-                    if (currencyStr.includes('czk') || currencyStr.includes('чеш') || 
-                        currencyStr.includes('крон') || currencyStr.includes('кчк') || 
+                    if (currencyStr.includes('czk') || currencyStr.includes('чеш') ||
+                        currencyStr.includes('крон') || currencyStr.includes('кчк') ||
                         currencyStr.includes('kč')) {
                         currency = 'CZK';
                     }
@@ -147,25 +148,25 @@ class AdminUtils {
             }
         }
 
-        return { 
-            valid: false, 
-            error: 'Неверный формат цены.\n\nПримеры:\n• 5000000 (рубли)\n• 5000000 RUB\n• 2000000 CZK\n• 2000000 крон\n• 2000000 Kč' 
+        return {
+            valid: false,
+            error: 'Неверный формат цены.\n\nПримеры:\n• 5000000 (рубли)\n• 5000000 RUB\n• 2000000 CZK\n• 2000000 крон\n• 2000000 Kč'
         };
     }
 
     // Валидация порядка сортировки
     validateOrder(order) {
         if (!order) return { valid: true, value: 0 };
-        
+
         const numOrder = Number(order);
         if (isNaN(numOrder)) {
             return { valid: false, error: 'Порядок должен быть числом' };
         }
-        
+
         if (numOrder < 0 || numOrder > 9999) {
             return { valid: false, error: 'Порядок должен быть от 0 до 9999' };
         }
-        
+
         return { valid: true, value: numOrder };
     }
 
@@ -174,7 +175,7 @@ class AdminUtils {
     // Форматирование цены
     formatPrice(price, currency = 'RUB') {
         const formatted = new Intl.NumberFormat('ru-RU').format(price);
-        
+
         switch (currency) {
             case 'CZK':
                 return `${formatted} Kč`;
@@ -195,15 +196,15 @@ class AdminUtils {
     // Конвертация валют
     convertCurrency(amount, fromCurrency, toCurrency) {
         if (fromCurrency === toCurrency) return amount;
-        
+
         const rateKey = `${fromCurrency}_${toCurrency}`;
         const rate = this.exchangeRates[rateKey];
-        
+
         if (!rate) {
             console.warn(`Exchange rate not found for ${rateKey}`);
             return amount;
         }
-        
+
         return Math.round(amount * rate);
     }
 
@@ -298,9 +299,9 @@ class AdminUtils {
     async exportCategories() {
         try {
             const categories = await Category.find().sort({ order: 1, name: 1 });
-            
+
             let csv = 'ID,Название,Описание,Активна,Порядок,Создана,Обновлена\n';
-            
+
             categories.forEach(cat => {
                 const row = [
                     cat._id,
@@ -313,7 +314,7 @@ class AdminUtils {
                 ].join(',');
                 csv += row + '\n';
             });
-            
+
             return csv;
         } catch (error) {
             console.error('Export categories error:', error);
@@ -327,9 +328,9 @@ class AdminUtils {
             const properties = await Property.find()
                 .populate('categoryId')
                 .sort({ order: 1, name: 1 });
-            
+
             let csv = 'ID,Название,Категория,Описание,Цена_RUB,Цена_CZK,Валюта,Площадь,Комнаты,Этаж,Всего_этажей,Адрес,Доступна,Порядок,Создана,Обновлена\n';
-            
+
             properties.forEach(prop => {
                 const row = [
                     prop._id,
@@ -351,7 +352,7 @@ class AdminUtils {
                 ].join(',');
                 csv += row + '\n';
             });
-            
+
             return csv;
         } catch (error) {
             console.error('Export properties error:', error);
@@ -407,32 +408,32 @@ class AdminUtils {
     // Создать клавиатуру пагинации
     createPaginationKeyboard(currentPage, totalPages, callbackPrefix) {
         const keyboard = [];
-        
+
         if (totalPages > 1) {
             const paginationRow = [];
-            
+
             if (currentPage > 1) {
-                paginationRow.push({ 
-                    text: '⬅️ Назад', 
-                    callback_data: `${callbackPrefix}_${currentPage - 1}` 
+                paginationRow.push({
+                    text: '⬅️ Назад',
+                    callback_data: `${callbackPrefix}_${currentPage - 1}`
                 });
             }
-            
-            paginationRow.push({ 
-                text: `${currentPage}/${totalPages}`, 
-                callback_data: 'current_page' 
+
+            paginationRow.push({
+                text: `${currentPage}/${totalPages}`,
+                callback_data: 'current_page'
             });
-            
+
             if (currentPage < totalPages) {
-                paginationRow.push({ 
-                    text: 'Вперёд ➡️', 
-                    callback_data: `${callbackPrefix}_${currentPage + 1}` 
+                paginationRow.push({
+                    text: 'Вперёд ➡️',
+                    callback_data: `${callbackPrefix}_${currentPage + 1}`
                 });
             }
-            
+
             keyboard.push(paginationRow);
         }
-        
+
         return keyboard;
     }
 
@@ -442,7 +443,7 @@ class AdminUtils {
         const endIndex = startIndex + itemsPerPage;
         const items = array.slice(startIndex, endIndex);
         const totalPages = Math.ceil(array.length / itemsPerPage);
-        
+
         return {
             items,
             currentPage: page,
@@ -489,13 +490,13 @@ class AdminUtils {
     async notifyAdmins(message, keyboard = null) {
         const adminConfig = require('../config/adminConfig');
         const adminIds = adminConfig.getAdminIds();
-        
+
         const promises = adminIds.map(adminId => {
             const options = { parse_mode: 'Markdown' };
             if (keyboard) {
                 options.reply_markup = keyboard;
             }
-            
+
             return this.bot.sendMessage(adminId, message, options)
                 .catch(error => {
                     console.error(`Failed to notify admin ${adminId}:`, error);
@@ -509,12 +510,12 @@ class AdminUtils {
     async notifyNewOrder(order) {
         const user = await User.findOne({ userId: order.userId });
         const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username : 'Неизвестный';
-        
+
         const message = `🔔 *Новый заказ!*\n\n` +
-                       `👤 *Клиент:* ${userName}\n` +
-                       `💰 *Сумма:* ${this.formatPrice(order.totalAmount)}\n` +
-                       `📝 *Товаров:* ${order.items.length}\n` +
-                       `🕐 *Время:* ${this.formatDate(order.createdAt)}`;
+            `👤 *Клиент:* ${userName}\n` +
+            `💰 *Сумма:* ${this.formatPrice(order.totalAmount)}\n` +
+            `📝 *Товаров:* ${order.items.length}\n` +
+            `🕐 *Время:* ${this.formatDate(order.createdAt)}`;
 
         const keyboard = {
             inline_keyboard: [[
@@ -586,7 +587,7 @@ class AdminUtils {
             // Анализ по категориям и объектам
             orders.forEach(order => {
                 const date = order.createdAt.toISOString().split('T')[0];
-                
+
                 // Продажи по дням
                 if (!report.dailySales[date]) {
                     report.dailySales[date] = { orders: 0, revenue: 0 };

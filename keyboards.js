@@ -1,4 +1,4 @@
-// keyboards.js - Клавиатуры с операторами из БД
+// keyboards.js - Исправленные клавиатуры
 const config = require('./config/config');
 
 class Keyboards {
@@ -13,26 +13,14 @@ class Keyboards {
         };
     }
 
-    // В файле keyboards.js
-    // Замени метод getPropertiesKeyboard (строки примерно 25-40):
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД - добавлен метод для категорий
+    static getCategoriesKeyboard(categories) {
+        const keyboard = categories.map(category => [{
+            text: `📂 ${category.name}`,
+            callback_data: `category_${category._id}`
+        }]);
 
-    static getPropertiesKeyboard(properties, categoryId) {
-        const keyboard = properties.map(property => {
-            // 🔥 ИСПРАВЛЕНИЕ: Показываем цену в правильной валюте
-            let price;
-            if (property.currency === 'CZK' && property.priceInCZK) {
-                price = `${property.priceInCZK.toLocaleString('cs-CZ')} Kč`;
-            } else {
-                price = `${property.price.toLocaleString('ru-RU')} ₽`;
-            }
-
-            return [{
-                text: `${property.name} - ${price}`,
-                callback_data: `property_${property._id}`
-            }];
-        });
-
-        keyboard.push([{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]);
+        keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
 
         return {
             reply_markup: {
@@ -41,11 +29,16 @@ class Keyboards {
         };
     }
 
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД - убрано дублирование и исправлено отображение цен
     static getPropertiesKeyboard(properties, categoryId) {
         const keyboard = properties.map(property => {
-            const price = property.priceInCZK ?
-                `${property.priceInCZK.toLocaleString('cs-CZ')} Kč` :
-                `${property.price.toLocaleString('ru-RU')} ₽`;
+            // Показываем цену в правильной валюте
+            let price;
+            if (property.currency === 'CZK' && property.priceInCZK) {
+                price = `${property.priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            } else {
+                price = `${property.price.toLocaleString('ru-RU')} ₽`;
+            }
 
             return [{
                 text: `${property.name} - ${price}`,
@@ -97,9 +90,8 @@ class Keyboards {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "✅ Да, заказать ещё", callback_data: "continue_shopping" }],
-                    [{ text: "🛒 Оформить заказ", callback_data: "complete_order" }],
-                    [{ text: "👀 Посмотреть корзину", callback_data: "view_cart" }]
+                    [{ text: "➕ Выбрать еще товары", callback_data: "continue_shopping" }],
+                    [{ text: "🛒 Перейти к оформлению", callback_data: "view_cart" }]
                 ]
             }
         };
@@ -109,9 +101,41 @@ class Keyboards {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "🛒 Оформить заказ", callback_data: "complete_order" }],
-                    [{ text: "➕ Добавить ещё", callback_data: "continue_shopping" }],
-                    [{ text: "🗑️ Очистить корзину", callback_data: "clear_cart" }]
+                    [{ text: "💳 Оплата картой", callback_data: "payment_card" }],
+                    [{ text: "💵 Оплата наличными", callback_data: "payment_cash" }],
+                    [
+                        { text: "➕ Добавить еще", callback_data: "continue_shopping" },
+                        { text: "🗑️ Очистить корзину", callback_data: "clear_cart" }
+                    ]
+                ]
+            }
+        };
+    }
+
+    // 🔥 НОВАЯ КЛАВИАТУРА: Подтверждение заказа с выбором оплаты
+    static getOrderConfirmationKeyboard() {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "💳 Оплатить картой", callback_data: "confirm_order_card" }],
+                    [{ text: "💵 Оплатить наличными", callback_data: "confirm_order_cash" }],
+                    [
+                        { text: "✏️ Изменить заказ", callback_data: "view_cart" },
+                        { text: "❌ Отменить", callback_data: "back_to_start" }
+                    ]
+                ]
+            }
+        };
+    }
+
+    // 🔥 НОВАЯ КЛАВИАТУРА: После успешного заказа
+    static getOrderCompleteKeyboard() {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "🏠 Посмотреть еще товары", callback_data: "work_with_bot" }],
+                    [{ text: "📞 Связаться с оператором", callback_data: "contact_operator" }],
+                    [{ text: "🏠 В главное меню", callback_data: "back_to_start" }]
                 ]
             }
         };

@@ -1,4 +1,4 @@
-// clientHandler.js - Исправлен метод showOperators
+// clientHandler.js - Исправлен метод showCategories
 const config = require('../config/config');
 const Keyboards = require('../keyboards');
 
@@ -62,7 +62,11 @@ class ClientHandler {
             data.startsWith('delete_') ||
             data.startsWith('confirm_') ||
             data.startsWith('toggle_') ||
-            data.startsWith('select_cat_')) {
+            data.startsWith('select_cat_') ||
+            data.startsWith('manage_') ||
+            data.startsWith('view_') ||
+            data.startsWith('set_main_') ||
+            data.startsWith('delete_photo_')) {
             return;
         }
 
@@ -115,8 +119,21 @@ class ClientHandler {
                     { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
                 );
 
+            } else if (data === 'payment_card') {
+                await this.showOrderConfirmation(chatId, messageId, 'card');
+
+            } else if (data === 'payment_cash') {
+                await this.showOrderConfirmation(chatId, messageId, 'cash');
+
+            } else if (data === 'confirm_order_card') {
+                await this.completeOrder(chatId, messageId, 'card');
+
+            } else if (data === 'confirm_order_cash') {
+                await this.completeOrder(chatId, messageId, 'cash');
+
             } else if (data === 'complete_order') {
-                await this.completeOrder(chatId, messageId);
+                // Старый метод - перенаправляем на просмотр корзины
+                await this.showCart(chatId, messageId);
 
             } else if (data === 'my_stats') {
                 await this.showUserStats(chatId, messageId);
@@ -142,26 +159,27 @@ class ClientHandler {
         }
     }
 
-   async showCategories(chatId, messageId) {
-    try {
-        const categories = await this.db.getCategories();
-        const session = this.getUserSession(chatId);
-        session.state = 'browsing_categories';
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД showCategories
+    async showCategories(chatId, messageId) {
+        try {
+            const categories = await this.db.getCategories();
+            const session = this.getUserSession(chatId);
+            session.state = 'browsing_categories';
 
-        const text = "🏠 Выберите категорию недвижимости:";
-        
-        // 🔥 ИСПРАВЛЕНИЕ: Правильный вызов статического метода
-        const keyboard = Keyboards.getCategoriesKeyboard(categories);
-        
-        await this.bot.editMessageText(text, {
-            chat_id: chatId,
-            message_id: messageId,
-            ...keyboard  // Разворачиваем объект с reply_markup
-        });
-    } catch (error) {
-        console.error('Ошибка при показе категорий:', error);
+            const text = "🏠 Выберите категорию недвижимости:";
+            
+            // ✅ ПРАВИЛЬНЫЙ ВЫЗОВ: используем статический метод
+            const keyboard = Keyboards.getCategoriesKeyboard(categories);
+            
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                ...keyboard  // Разворачиваем объект с reply_markup
+            });
+        } catch (error) {
+            console.error('Ошибка при показе категорий:', error);
+        }
     }
-}
 
     async showProperties(chatId, messageId, categoryId) {
         try {
@@ -172,28 +190,58 @@ class ClientHandler {
             session.currentCategory = categoryId;
 
             if (properties.length === 0) {
-                await this.bot.editMessageText(
-                    "😔 В данной категории пока нет доступных объектов.",
-                    { chat_id: chatId, message_id: messageId, ...Keyboards.getCategoriesKeyboard(await this.db.getCategories()) }
-                );
+                const keyboard = Keyboards.getCategoriesKeyboard(await this.db.getCategories());
+                
+                // Проверяем тип предыдущего сообщения
+                const previousMsg = session.lastMessageType;
+                if (previousMsg === 'photo') {
+                    // Отправляем новое сообщение вместо редактирования
+                    await this.bot.sendMessage(chatId, "😔 В данной категории пока нет доступных объектов.", keyboard);
+                } else {
+                    await this.bot.editMessageText(
+                        "😔 В данной категории пока нет доступных объектов.",
+                        { chat_id: chatId, message_id: messageId, ...keyboard }
+                    );
+                }
                 return;
             }
 
             const text = `🏘️ ${category.name}\n\nВыберите объект недвижимости:`;
+            const keyboard = Keyboards.getPropertiesKeyboard(properties, categoryId);
 
-            await this.bot.editMessageText(text, {
-                chat_id: chatId,
-                message_id: messageId,
-                ...Keyboards.getPropertiesKeyboard(properties, categoryId)
-            });
+            // Сохраняем тип сообщения
+            session.lastMessageType = 'text';
+
+            // Проверяем, было ли предыдущее сообщение фотографией
+            if (session.lastMessageType === 'photo') {
+                // Отправляем новое сообщение
+                await this.bot.sendMessage(chatId, text, keyboard);
+            } else {
+                // Редактируем существующее сообщение
+                await this.bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    ...keyboard
+                });
+            }
         } catch (error) {
             console.error('Ошибка при показе недвижимости:', error);
+            
+            // В случае ошибки отправляем новое сообщение
+            try {
+                const properties = await this.db.getPropertiesByCategory(categoryId);
+                const category = await this.db.getCategoryById(categoryId);
+                const text = `🏘️ ${category.name}\n\nВыберите объект недвижимости:`;
+                const keyboard = Keyboards.getPropertiesKeyboard(properties, categoryId);
+                
+                await this.bot.sendMessage(chatId, text, keyboard);
+            } catch (fallbackError) {
+                console.error('Fallback ошибка:', fallbackError);
+            }
         }
     }
 
-    // В файле handler/clientHandler.js
-    // Замени метод showPropertyDetail (строки примерно 149-175):
-
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Показ деталей товара без характеристик
     async showPropertyDetail(chatId, messageId, propertyId) {
         try {
             const property = await this.db.getPropertyById(propertyId);
@@ -201,31 +249,56 @@ class ClientHandler {
             session.state = 'viewing_property';
             session.currentProperty = propertyId;
 
-            let text = `🏠 ${property.name}\n\n`;
+            let text = `🏠 *${property.name}*\n\n`;
 
-            // 🔥 ИСПРАВЛЕНИЕ: Показываем цену в основной валюте товара
+            // Показываем цену в основной валюте товара
             if (property.currency === 'CZK' && property.priceInCZK) {
-                text += `💰 Цена: ${property.priceInCZK.toLocaleString('cs-CZ')} Kč\n`;
+                text += `💰 *Цена:* ${property.priceInCZK.toLocaleString('cs-CZ')} Kč\n\n`;
             } else {
-                text += `💰 Цена: ${property.price.toLocaleString('ru-RU')} ₽\n`;
+                text += `💰 *Цена:* ${property.price.toLocaleString('ru-RU')} ₽\n\n`;
             }
 
-            text += `📝 ${property.description}\n\n`;
-
-            if (property.specifications) {
-                text += `📋 Характеристики:\n`;
-                if (property.specifications.area) text += `📐 Площадь: ${property.specifications.area} кв.м\n`;
-                if (property.specifications.rooms) text += `🚪 Комнат: ${property.specifications.rooms}\n`;
-                if (property.specifications.floor) text += `🏢 Этаж: ${property.specifications.floor}`;
-                if (property.specifications.totalFloors) text += ` из ${property.specifications.totalFloors}\n`;
-                if (property.specifications.address) text += `📍 Адрес: ${property.specifications.address}\n`;
+            // Добавляем описание, если оно есть
+            if (property.description && property.description.trim()) {
+                text += `📝 ${property.description}`;
             }
 
-            await this.bot.editMessageText(text, {
-                chat_id: chatId,
-                message_id: messageId,
-                ...Keyboards.getPropertyDetailKeyboard(propertyId, property.categoryId._id)
-            });
+            // 🔥 УБРАНО: Блок с характеристиками полностью удален
+
+            const keyboard = Keyboards.getPropertyDetailKeyboard(propertyId, property.categoryId._id);
+
+            // 🔥 НОВОЕ: Если есть главная фотография, отправляем её с описанием
+            if (property.photos && property.photos.length > 0) {
+                const mainPhoto = property.photos.find(photo => photo.isMain) || property.photos[0];
+                
+                // Помечаем что отправляем фото
+                session.lastMessageType = 'photo';
+                
+                // Отправляем фотографию с описанием
+                await this.bot.sendPhoto(chatId, mainPhoto.fileId, {
+                    caption: text,
+                    parse_mode: 'Markdown',
+                    ...keyboard
+                });
+                
+                // Удаляем старое текстовое сообщение
+                try {
+                    await this.bot.deleteMessage(chatId, messageId);
+                } catch (error) {
+                    // Игнорируем ошибку удаления
+                }
+            } else {
+                // Помечаем что отправляем текст
+                session.lastMessageType = 'text';
+                
+                // Если фотографий нет, отправляем обычное текстовое сообщение
+                await this.bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    ...keyboard
+                });
+            }
         } catch (error) {
             console.error('Ошибка при показе деталей недвижимости:', error);
         }
@@ -249,15 +322,12 @@ class ClientHandler {
         }
     }
 
-    // В файле handler/clientHandler.js  
-    // Замени метод addToCart (строки примерно 195-220):
-
     async addToCart(chatId, messageId, propertyId, quantity) {
         try {
             const property = await this.db.getPropertyById(propertyId);
             const session = this.getUserSession(chatId);
 
-            // 🔥 ИСПРАВЛЕНИЕ: Используем цену в основной валюте товара
+            // Используем цену в основной валюте товара
             let priceToUse, priceDisplay;
             if (property.currency === 'CZK' && property.priceInCZK) {
                 priceToUse = property.priceInCZK;
@@ -284,11 +354,12 @@ class ClientHandler {
                 });
             }
 
-            const text = `✅ Добавлено в заказ:\n\n🏠 ${property.name}\n📦 Количество: ${quantity}\n💰 Сумма: ${priceDisplay}\n\n🛒 В корзине: ${session.cart.length} поз.\n\nХотите заказать что-то ещё?`;
+            const text = `✅ *Товар добавлен в корзину!*\n\n🏠 *${property.name}*\n📦 Количество: ${quantity}\n💰 Сумма: ${priceDisplay}\n\n🛒 *В корзине:* ${session.cart.length} поз.\n\n*Что дальше?*`;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
+                parse_mode: 'Markdown',
                 ...Keyboards.getContinueShoppingKeyboard()
             });
         } catch (error) {
@@ -302,32 +373,110 @@ class ClientHandler {
 
             if (session.cart.length === 0) {
                 await this.bot.editMessageText(
+                    "🛒 Ваша корзина пуста!\n\nДобавьте товары для оформления заказа.",
+                    { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
+                );
+                return;
+            }
+
+            let text = "🛒 *Ваша корзина:*\n\n";
+            let totalAmount = 0;
+
+            session.cart.forEach((item, index) => {
+                text += `${index + 1}. *${item.name}*\n`;
+                text += `   📦 Количество: ${item.quantity}\n`;
+                
+                // Показываем цену в правильной валюте
+                if (item.currency === 'CZK') {
+                    text += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                    text += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
+                } else {
+                    text += `   💰 Цена: ${item.price.toLocaleString('ru-RU')} ₽\n`;
+                    text += `   💵 Сумма: ${item.total.toLocaleString('ru-RU')} ₽\n\n`;
+                }
+                
+                totalAmount += item.total;
+            });
+
+            // Определяем валюту общей суммы (берем валюту первого товара)
+            const mainCurrency = session.cart[0].currency || 'RUB';
+            if (mainCurrency === 'CZK') {
+                text += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n\n`;
+            } else {
+                text += `💳 *Общая сумма: ${totalAmount.toLocaleString('ru-RU')} ₽*\n\n`;
+            }
+            
+            text += `*Выберите способ оплаты:*`;
+
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                ...Keyboards.getCartKeyboard()
+            });
+        } catch (error) {
+            console.error('Ошибка при показе корзины:', error);
+        }
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Подтверждение заказа с выбранным способом оплаты
+    async showOrderConfirmation(chatId, messageId, paymentMethod) {
+        try {
+            const session = this.getUserSession(chatId);
+            const user = await this.db.getUserById(chatId);
+
+            if (session.cart.length === 0) {
+                await this.bot.editMessageText(
                     "🛒 Ваша корзина пуста!",
                     { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
                 );
                 return;
             }
 
-            let text = "🛒 Ваша корзина:\n\n";
-            let totalAmount = 0;
+            const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
+            const paymentText = paymentMethod === 'card' ? '💳 Оплата картой' : '💵 Оплата наличными';
+            
+            // Определяем валюту
+            const mainCurrency = session.cart[0].currency || 'RUB';
+            const totalFormatted = mainCurrency === 'CZK' ? 
+                `${totalAmount.toLocaleString('cs-CZ')} Kč` : 
+                `${totalAmount.toLocaleString('ru-RU')} ₽`;
 
+            let text = `📋 *Подтверждение заказа*\n\n`;
+            text += `👤 *Заказчик:* ${user.firstName || 'Пользователь'}`;
+            if (user.lastName) text += ` ${user.lastName}`;
+            if (user.username) text += ` (@${user.username})`;
+            text += `\n\n`;
+
+            text += `🛒 *Ваш заказ:*\n`;
             session.cart.forEach((item, index) => {
-                text += `${index + 1}. ${item.name}\n`;
-                text += `   📦 Количество: ${item.quantity}\n`;
-                text += `   💰 Цена: ${item.price.toLocaleString('ru-RU')} ₽\n`;
-                text += `   💵 Сумма: ${item.total.toLocaleString('ru-RU')} ₽\n\n`;
-                totalAmount += item.total;
+                text += `${index + 1}. ${item.name} × ${item.quantity}\n`;
             });
 
-            text += `💳 Общая сумма: ${totalAmount.toLocaleString('ru-RU')} ₽`;
+            text += `\n💰 *Общая сумма:* ${totalFormatted}\n`;
+            text += `💳 *Способ оплаты:* ${paymentText}\n\n`;
+
+            if (paymentMethod === 'card') {
+                text += `*Оплата картой:*\n`;
+                text += `После подтверждения заказа вам будут высланы реквизиты для оплаты.\n\n`;
+            } else {
+                text += `*Оплата наличными:*\n`;
+                text += `Оплата производится при встрече с нашим представителем.\n\n`;
+            }
+
+            text += `*Подтвердите заказ:*`;
+
+            // Сохраняем выбранный способ оплаты
+            session.paymentMethod = paymentMethod;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
-                ...Keyboards.getCartKeyboard()
+                parse_mode: 'Markdown',
+                ...Keyboards.getOrderConfirmationKeyboard()
             });
         } catch (error) {
-            console.error('Ошибка при показе корзины:', error);
+            console.error('Ошибка при показе подтверждения заказа:', error);
         }
     }
 
@@ -490,12 +639,11 @@ class ClientHandler {
         }
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД
+    // Показ операторов
     async showOperators(chatId, messageId) {
         const text = `📞 Наши операторы:\n\nНажмите на имя оператора, чтобы написать ему в личные сообщения:`;
 
         try {
-            // Здесь добавлен await!
             const operatorsKeyboard = await Keyboards.getOperatorsKeyboard();
 
             await this.bot.editMessageText(text, {

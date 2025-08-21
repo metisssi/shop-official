@@ -28,6 +28,70 @@ class AdminHandler {
             if (!this.isAdmin(query.from.id)) return;
             this.handleAdminCallback(query);
         });
+
+        // 🔥 УБРАНО: Обработка фотографий (теперь в app.js)
+    }
+
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Обработка загрузки фотографий
+    async handlePhotoUpload(msg) {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+
+        try {
+            console.log('Получена фотография от пользователя:', userId);
+            
+            const session = global.adminUtils?.getSession(userId);
+            console.log('Текущая сессия:', session);
+            
+            if (!session || session.type !== 'uploading_product_photo') {
+                console.log('Сессия не найдена или неверный тип');
+                return this.bot.sendMessage(chatId, 
+                    '❌ Сначала выберите товар для добавления фотографии через команду /admin');
+            }
+
+            const { productId } = session.data;
+            console.log('ID товара из сессии:', productId);
+            
+            const product = await Property.findById(productId);
+            
+            if (!product) {
+                global.adminUtils.clearSession(userId);
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
+
+            // Получаем информацию о фотографии (берем самое большое разрешение)
+            const photo = msg.photo[msg.photo.length - 1];
+            
+            const photoData = {
+                fileId: photo.file_id,
+                fileName: `photo_${Date.now()}.jpg`,
+                fileSize: photo.file_size,
+                uploadedBy: userId,
+                uploadedAt: new Date()
+            };
+
+            console.log('Добавляем фотографию:', photoData);
+
+            await product.addPhoto(photoData);
+            global.adminUtils.clearSession(userId);
+
+            // Обновляем информацию о товаре для получения актуального количества фотографий
+            const updatedProduct = await Property.findById(productId);
+
+            this.bot.sendMessage(chatId, 
+                `✅ Фотография добавлена к товару "*${product.name}*"!\n\n📸 Всего фотографий: ${updatedProduct.photos.length}`,
+                { parse_mode: 'Markdown' }
+            );
+
+            // Показываем меню управления фотографиями
+            setTimeout(() => {
+                this.manageProductPhotos(chatId, null, productId);
+            }, 1000);
+
+        } catch (error) {
+            console.error('Photo upload error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при загрузке фотографии');
+        }
     }
 
     // Главное меню администратора
@@ -122,6 +186,31 @@ class AdminHandler {
                     } else if (data.startsWith('edit_prod_name_')) {
                         const productId = data.replace('edit_prod_name_', '');
                         await this.startEditProductName(chatId, productId);
+                    } else if (data.startsWith('edit_prod_desc_')) {
+                        const productId = data.replace('edit_prod_desc_', '');
+                        await this.startEditProductDescription(chatId, productId);
+                    } else if (data.startsWith('edit_prod_price_')) {
+                        const productId = data.replace('edit_prod_price_', '');
+                        await this.startEditProductPrice(chatId, productId);
+                    } else if (data.startsWith('manage_prod_photos_')) {
+                        const productId = data.replace('manage_prod_photos_', '');
+                        await this.manageProductPhotos(chatId, messageId, productId);
+                    } else if (data.startsWith('add_prod_photo_')) {
+                        const productId = data.replace('add_prod_photo_', '');
+                        await this.startAddProductPhoto(chatId, productId);
+                    } else if (data.startsWith('view_prod_photos_')) {
+                        const productId = data.replace('view_prod_photos_', '');
+                        await this.viewProductPhotos(chatId, messageId, productId);
+                    } else if (data.startsWith('set_main_photo_')) {
+                        const parts = data.replace('set_main_photo_', '').split('_');
+                        const productId = parts[0];
+                        const photoIndex = parseInt(parts[1]);
+                        await this.setMainPhoto(chatId, messageId, productId, photoIndex);
+                    } else if (data.startsWith('delete_photo_')) {
+                        const parts = data.replace('delete_photo_', '').split('_');
+                        const productId = parts[0];
+                        const photoIndex = parseInt(parts[1]);
+                        await this.deletePhoto(chatId, messageId, productId, photoIndex);
                     } else if (data.startsWith('toggle_prod_')) {
                         const productId = data.replace('toggle_prod_', '');
                         await this.toggleProductStatus(chatId, messageId, productId);
@@ -488,8 +577,9 @@ class AdminHandler {
             products.forEach((product, index) => {
                 const status = product.isAvailable ? '✅' : '❌';
                 const categoryName = product.categoryId ? product.categoryId.name : 'Без категории';
+                const photoIcon = product.photosCount > 0 ? `📸${product.photosCount}` : '📷';
                 
-                text += `${index + 1}. ${status} *${product.name}*\n`;
+                text += `${index + 1}. ${status} ${photoIcon} *${product.name}*\n`;
                 text += `   📂 Категория: ${categoryName}\n`;
                 text += `   💰 Цена: ${product.priceInCZK ? product.priceInCZK.toLocaleString('cs-CZ') + ' Kč' : 'не указана'}\n\n`;
 
@@ -524,17 +614,25 @@ class AdminHandler {
             const status = product.isAvailable ? '✅ Доступен' : '❌ Недоступен';
             const categoryName = product.categoryId ? product.categoryId.name : 'Без категории';
             const price = product.priceInCZK ? `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 'не указана';
+            const photosInfo = product.photosCount > 0 ? `📸 ${product.photosCount} фото` : '📷 Нет фото';
             
             const text = `✏️ *Редактирование товара*\n\n` +
                         `📝 *Название:* ${product.name}\n` +
                         `📂 *Категория:* ${categoryName}\n` +
                         `💰 *Цена:* ${price}\n` +
+                        `📷 *Фотографии:* ${photosInfo}\n` +
+                        `📄 *Описание:* ${product.description || 'Не указано'}\n` +
                         `📊 *Статус:* ${status}`;
 
             const keyboard = {
                 inline_keyboard: [
                     [
-                        { text: '✏️ Изменить название', callback_data: `edit_prod_name_${productId}` }
+                        { text: '✏️ Изменить название', callback_data: `edit_prod_name_${productId}` },
+                        { text: '📝 Изменить описание', callback_data: `edit_prod_desc_${productId}` }
+                    ],
+                    [
+                        { text: '💰 Изменить цену', callback_data: `edit_prod_price_${productId}` },
+                        { text: '📷 Управление фото', callback_data: `manage_prod_photos_${productId}` }
                     ],
                     [
                         { text: product.isAvailable ? '❌ Деактивировать' : '✅ Активировать', callback_data: `toggle_prod_${productId}` }
@@ -555,6 +653,213 @@ class AdminHandler {
         }
     }
 
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Управление фотографиями товара
+    async manageProductPhotos(chatId, messageId, productId) {
+        try {
+            const product = await Property.findById(productId);
+            if (!product) {
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
+
+            let text = `📷 *Управление фотографиями*\n\n`;
+            text += `🏠 *Товар:* ${product.name}\n`;
+            text += `📸 *Всего фотографий:* ${product.photosCount}\n\n`;
+
+            const keyboard = {
+                inline_keyboard: [
+                    [
+                        { text: '➕ Добавить фото', callback_data: `add_prod_photo_${productId}` }
+                    ]
+                ]
+            };
+
+            if (product.photosCount > 0) {
+                keyboard.inline_keyboard.push([
+                    { text: '👀 Просмотреть фото', callback_data: `view_prod_photos_${productId}` }
+                ]);
+            }
+
+            keyboard.inline_keyboard.push([
+                { text: '⬅️ Назад к товару', callback_data: `edit_product_${productId}` }
+            ]);
+
+            // Если messageId передан, редактируем существующее сообщение
+            if (messageId) {
+                this.bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    reply_markup: keyboard
+                });
+            } else {
+                // Если messageId не передан, отправляем новое сообщение
+                this.bot.sendMessage(chatId, text, {
+                    parse_mode: 'Markdown',
+                    reply_markup: keyboard
+                });
+            }
+        } catch (error) {
+            console.error('Manage product photos error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при управлении фотографиями');
+        }
+    }
+
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Начало добавления фотографии
+    async startAddProductPhoto(chatId, productId) {
+        try {
+            const product = await Property.findById(productId);
+            if (!product) {
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
+
+            console.log('Создаем сессию для пользователя:', chatId, 'товар:', productId);
+
+            if (global.adminUtils) {
+                global.adminUtils.createSession(chatId, 'uploading_product_photo', { productId });
+                console.log('Сессия создана успешно');
+            } else {
+                console.error('global.adminUtils не найден!');
+                return this.bot.sendMessage(chatId, '❌ Ошибка системы. Попробуйте позже.');
+            }
+
+            this.bot.sendMessage(chatId, 
+                `📷 *Добавление фотографии*\n\n🏠 *Товар:* ${product.name}\n\n📸 Отправьте фотографию (просто прикрепите изображение к сообщению):`,
+                { parse_mode: 'Markdown' }
+            );
+        } catch (error) {
+            console.error('Start add product photo error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при добавлении фотографии');
+        }
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Просмотр фотографий товара
+    async viewProductPhotos(chatId, messageId, productId) {
+        try {
+            const product = await Property.findById(productId);
+            if (!product) {
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
+
+            if (product.photosCount === 0) {
+                return this.bot.editMessageText(
+                    `📷 *Фотографии товара*\n\n🏠 *Товар:* ${product.name}\n\n❌ У этого товара нет фотографий`,
+                    {
+                        chat_id: chatId,
+                        message_id: messageId,
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: '⬅️ Назад', callback_data: `manage_prod_photos_${productId}` }
+                            ]]
+                        }
+                    }
+                );
+            }
+
+            let text = `📷 *Фотографии товара*\n\n🏠 *Товар:* ${product.name}\n📸 *Количество:* ${product.photosCount}\n\n`;
+
+            const keyboard = [];
+
+            product.photos.forEach((photo, index) => {
+                const isMain = photo.isMain ? '⭐ ' : '';
+                const photoRow = [];
+                
+                photoRow.push({
+                    text: `${isMain}📸 ${index + 1}`,
+                    callback_data: `current_page` // Заглушка
+                });
+
+                if (!photo.isMain) {
+                    photoRow.push({
+                        text: '⭐ Сделать главной',
+                        callback_data: `set_main_photo_${productId}_${index}`
+                    });
+                }
+
+                photoRow.push({
+                    text: '🗑',
+                    callback_data: `delete_photo_${productId}_${index}`
+                });
+
+                keyboard.push(photoRow);
+            });
+
+            keyboard.push([
+                { text: '➕ Добавить фото', callback_data: `add_prod_photo_${productId}` },
+                { text: '⬅️ Назад', callback_data: `manage_prod_photos_${productId}` }
+            ]);
+
+            // Отправляем первую фотографию с клавиатурой
+            if (product.mainPhoto) {
+                await this.bot.sendPhoto(chatId, product.mainPhoto.fileId, {
+                    caption: text,
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                });
+                
+                // Удаляем старое сообщение
+                try {
+                    await this.bot.deleteMessage(chatId, messageId);
+                } catch (error) {
+                    // Игнорируем ошибку удаления
+                }
+            } else {
+                this.bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                });
+            }
+
+        } catch (error) {
+            console.error('View product photos error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при просмотре фотографий');
+        }
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Установить главную фотографию
+    async setMainPhoto(chatId, messageId, productId, photoIndex) {
+        try {
+            const product = await Property.findById(productId);
+            if (!product) {
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
+
+            await product.setMainPhoto(photoIndex);
+
+            this.bot.sendMessage(chatId, '✅ Главная фотография установлена!');
+            
+            // Обновляем список фотографий
+            setTimeout(() => this.viewProductPhotos(chatId, messageId, productId), 1000);
+
+        } catch (error) {
+            console.error('Set main photo error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при установке главной фотографии');
+        }
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Удалить фотографию
+    async deletePhoto(chatId, messageId, productId, photoIndex) {
+        try {
+            const product = await Property.findById(productId);
+            if (!product) {
+                return this.bot.sendMessage(chatId, '❌ Товар не найден');
+            }
+
+            await product.removePhoto(photoIndex);
+
+            this.bot.sendMessage(chatId, '✅ Фотография удалена!');
+            
+            // Обновляем список фотографий
+            setTimeout(() => this.viewProductPhotos(chatId, messageId, productId), 1000);
+
+        } catch (error) {
+            console.error('Delete photo error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при удалении фотографии');
+        }
+    }
+
     // Начало редактирования названия товара
     async startEditProductName(chatId, productId) {
         const product = await Property.findById(productId);
@@ -568,6 +873,44 @@ class AdminHandler {
         
         this.bot.sendMessage(chatId, 
             `✏️ *Редактирование названия товара*\n\nТекущее название: *${product.name}*\n\nВведите новое название:`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Начало редактирования описания товара
+    async startEditProductDescription(chatId, productId) {
+        const product = await Property.findById(productId);
+        if (!product) {
+            return this.bot.sendMessage(chatId, '❌ Товар не найден');
+        }
+
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'editing_product_description', { productId });
+        }
+        
+        this.bot.sendMessage(chatId, 
+            `📝 *Редактирование описания товара*\n\nТекущее описание: *${product.description || 'Отсутствует'}*\n\nВведите новое описание:`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // 🔥 НОВЫЙ МЕТОД: Начало редактирования цены товара
+    async startEditProductPrice(chatId, productId) {
+        const product = await Property.findById(productId);
+        if (!product) {
+            return this.bot.sendMessage(chatId, '❌ Товар не найден');
+        }
+
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'editing_product_price', { productId });
+        }
+        
+        const currentPrice = product.priceInCZK ? 
+            `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 
+            `${product.price.toLocaleString('ru-RU')} ₽`;
+            
+        this.bot.sendMessage(chatId, 
+            `💰 *Редактирование цены товара*\n\nТекущая цена: *${currentPrice}*\n\nВведите новую цену с валютой:\n\nПримеры:\n• 5000000 (рубли)\n• 5000000 RUB\n• 2000000 CZK\n• 2000000 крон`,
             { parse_mode: 'Markdown' }
         );
     }
@@ -602,9 +945,11 @@ class AdminHandler {
             }
 
             const price = product.priceInCZK ? `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 'не указана';
+            const photosInfo = product.photosCount > 0 ? `\n📸 *Фотографий:* ${product.photosCount}` : '';
+            
             const text = `🗑 *Удаление товара*\n\n` +
                         `📝 *Товар:* ${product.name}\n` +
-                        `💰 *Цена:* ${price}\n\n` +
+                        `💰 *Цена:* ${price}${photosInfo}\n\n` +
                         `Вы уверены, что хотите удалить этот товар?`;
 
             const keyboard = {
