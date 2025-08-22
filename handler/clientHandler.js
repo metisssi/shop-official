@@ -1,4 +1,4 @@
-// clientHandler.js - Исправлен метод showCategories
+// clientHandler.js - Исправленный полный файл для работы только с CZK
 const config = require('../config/config');
 const Keyboards = require('../keyboards');
 
@@ -7,6 +7,14 @@ class ClientHandler {
         this.bot = bot;
         this.db = database;
         this.userSessions = new Map();
+        
+        // Реквизиты для оплаты картой (замените на реальные)
+        this.paymentDetails = {
+            cardNumber: "4111 1111 1111 1111",
+            cardHolder: "IVAN PETROV", 
+            bank: "Česká spořitelna",
+            message: "Оплата заказа недвижимости"
+        };
     }
 
     getUserSession(userId) {
@@ -79,7 +87,6 @@ class ClientHandler {
 
             } else if (data.startsWith('category_')) {
                 const categoryId = data.split('_')[1];
-                // Проверяем, что это валидный ObjectId (24 символа)
                 if (categoryId && categoryId.length === 24) {
                     await this.showProperties(chatId, messageId, categoryId);
                 }
@@ -106,8 +113,11 @@ class ClientHandler {
                     }
                 }
 
-            } else if (data === 'continue_shopping') {
+            } else if (data === 'choose_more_items') {
                 await this.showCategories(chatId, messageId);
+
+            } else if (data === 'proceed_to_payment') {
+                await this.showCart(chatId, messageId);
 
             } else if (data === 'view_cart') {
                 await this.showCart(chatId, messageId);
@@ -120,20 +130,19 @@ class ClientHandler {
                 );
 
             } else if (data === 'payment_card') {
-                await this.showOrderConfirmation(chatId, messageId, 'card');
+                await this.showCardPaymentDetails(chatId, messageId);
 
             } else if (data === 'payment_cash') {
-                await this.showOrderConfirmation(chatId, messageId, 'cash');
+                await this.showCashPaymentInfo(chatId, messageId);
 
-            } else if (data === 'confirm_order_card') {
-                await this.completeOrder(chatId, messageId, 'card');
+            } else if (data === 'confirm_card_payment') {
+                await this.processCardPayment(chatId, messageId);
 
-            } else if (data === 'confirm_order_cash') {
-                await this.completeOrder(chatId, messageId, 'cash');
+            } else if (data === 'confirm_cash_payment') {
+                await this.processCashPayment(chatId, messageId);
 
-            } else if (data === 'complete_order') {
-                // Старый метод - перенаправляем на просмотр корзины
-                await this.showCart(chatId, messageId);
+            } else if (data === 'payment_completed') {
+                await this.completeOrder(chatId, messageId);
 
             } else if (data === 'my_stats') {
                 await this.showUserStats(chatId, messageId);
@@ -159,7 +168,6 @@ class ClientHandler {
         }
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД showCategories
     async showCategories(chatId, messageId) {
         try {
             const categories = await this.db.getCategories();
@@ -167,14 +175,12 @@ class ClientHandler {
             session.state = 'browsing_categories';
 
             const text = "🏠 Выберите категорию недвижимости:";
-            
-            // ✅ ПРАВИЛЬНЫЙ ВЫЗОВ: используем статический метод
             const keyboard = Keyboards.getCategoriesKeyboard(categories);
             
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
-                ...keyboard  // Разворачиваем объект с reply_markup
+                ...keyboard
             });
         } catch (error) {
             console.error('Ошибка при показе категорий:', error);
@@ -192,10 +198,8 @@ class ClientHandler {
             if (properties.length === 0) {
                 const keyboard = Keyboards.getCategoriesKeyboard(await this.db.getCategories());
                 
-                // Проверяем тип предыдущего сообщения
                 const previousMsg = session.lastMessageType;
                 if (previousMsg === 'photo') {
-                    // Отправляем новое сообщение вместо редактирования
                     await this.bot.sendMessage(chatId, "😔 В данной категории пока нет доступных объектов.", keyboard);
                 } else {
                     await this.bot.editMessageText(
@@ -209,15 +213,11 @@ class ClientHandler {
             const text = `🏘️ ${category.name}\n\nВыберите объект недвижимости:`;
             const keyboard = Keyboards.getPropertiesKeyboard(properties, categoryId);
 
-            // Сохраняем тип сообщения
             session.lastMessageType = 'text';
 
-            // Проверяем, было ли предыдущее сообщение фотографией
             if (session.lastMessageType === 'photo') {
-                // Отправляем новое сообщение
                 await this.bot.sendMessage(chatId, text, keyboard);
             } else {
-                // Редактируем существующее сообщение
                 await this.bot.editMessageText(text, {
                     chat_id: chatId,
                     message_id: messageId,
@@ -227,7 +227,6 @@ class ClientHandler {
         } catch (error) {
             console.error('Ошибка при показе недвижимости:', error);
             
-            // В случае ошибки отправляем новое сообщение
             try {
                 const properties = await this.db.getPropertiesByCategory(categoryId);
                 const category = await this.db.getCategoryById(categoryId);
@@ -241,7 +240,6 @@ class ClientHandler {
         }
     }
 
-    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД: Показ деталей товара без характеристик
     async showPropertyDetail(chatId, messageId, propertyId) {
         try {
             const property = await this.db.getPropertyById(propertyId);
@@ -251,11 +249,13 @@ class ClientHandler {
 
             let text = `🏠 *${property.name}*\n\n`;
 
-            // Показываем цену в основной валюте товара
-            if (property.currency === 'CZK' && property.priceInCZK) {
+            // Показываем цену только в кронах
+            if (property.priceInCZK) {
                 text += `💰 *Цена:* ${property.priceInCZK.toLocaleString('cs-CZ')} Kč\n\n`;
-            } else {
-                text += `💰 *Цена:* ${property.price.toLocaleString('ru-RU')} ₽\n\n`;
+            } else if (property.price) {
+                // Если цена в рублях, конвертируем в кроны (примерный курс 1 RUB = 0.4 CZK)
+                const priceInCZK = Math.round(property.price * 0.4);
+                text += `💰 *Цена:* ${priceInCZK.toLocaleString('cs-CZ')} Kč\n\n`;
             }
 
             // Добавляем описание, если оно есть
@@ -263,35 +263,28 @@ class ClientHandler {
                 text += `📝 ${property.description}`;
             }
 
-            // 🔥 УБРАНО: Блок с характеристиками полностью удален
-
             const keyboard = Keyboards.getPropertyDetailKeyboard(propertyId, property.categoryId._id);
 
-            // 🔥 НОВОЕ: Если есть главная фотография, отправляем её с описанием
+            // Если есть главная фотография, отправляем её с описанием
             if (property.photos && property.photos.length > 0) {
                 const mainPhoto = property.photos.find(photo => photo.isMain) || property.photos[0];
                 
-                // Помечаем что отправляем фото
                 session.lastMessageType = 'photo';
                 
-                // Отправляем фотографию с описанием
                 await this.bot.sendPhoto(chatId, mainPhoto.fileId, {
                     caption: text,
                     parse_mode: 'Markdown',
                     ...keyboard
                 });
                 
-                // Удаляем старое текстовое сообщение
                 try {
                     await this.bot.deleteMessage(chatId, messageId);
                 } catch (error) {
                     // Игнорируем ошибку удаления
                 }
             } else {
-                // Помечаем что отправляем текст
                 session.lastMessageType = 'text';
                 
-                // Если фотографий нет, отправляем обычное текстовое сообщение
                 await this.bot.editMessageText(text, {
                     chat_id: chatId,
                     message_id: messageId,
@@ -310,7 +303,16 @@ class ClientHandler {
             const session = this.getUserSession(chatId);
             session.state = 'choosing_quantity';
 
-            const text = `🏠 ${property.name}\n\n💰 Цена: ${property.price.toLocaleString('ru-RU')} ₽\n\nВыберите количество:`;
+            // Показываем цену в кронах
+            let priceText = 'Цена не указана';
+            if (property.priceInCZK) {
+                priceText = `${property.priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            } else if (property.price) {
+                const priceInCZK = Math.round(property.price * 0.4);
+                priceText = `${priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            }
+
+            const text = `🏠 ${property.name}\n\n💰 Цена: ${priceText}\n\nВыберите количество:`;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
@@ -327,15 +329,18 @@ class ClientHandler {
             const property = await this.db.getPropertyById(propertyId);
             const session = this.getUserSession(chatId);
 
-            // Используем цену в основной валюте товара
-            let priceToUse, priceDisplay;
-            if (property.currency === 'CZK' && property.priceInCZK) {
-                priceToUse = property.priceInCZK;
-                priceDisplay = `${(priceToUse * quantity).toLocaleString('cs-CZ')} Kč`;
+            // Используем цену в кронах
+            let priceInCZK;
+            if (property.priceInCZK) {
+                priceInCZK = property.priceInCZK;
+            } else if (property.price) {
+                priceInCZK = Math.round(property.price * 0.4); // Конвертация из рублей
             } else {
-                priceToUse = property.price;
-                priceDisplay = `${(priceToUse * quantity).toLocaleString('ru-RU')} ₽`;
+                priceInCZK = 0;
             }
+
+            const totalPrice = priceInCZK * quantity;
+            const priceDisplay = `${totalPrice.toLocaleString('cs-CZ')} Kč`;
 
             // Проверяем, есть ли уже такой товар в корзине
             const existingItem = session.cart.find(item => item.propertyId.toString() === propertyId);
@@ -347,10 +352,10 @@ class ClientHandler {
                 session.cart.push({
                     propertyId: property._id,
                     name: property.name,
-                    price: priceToUse,
-                    currency: property.currency || 'RUB',
+                    price: priceInCZK,
+                    currency: 'CZK',
                     quantity: quantity,
-                    total: priceToUse * quantity
+                    total: totalPrice
                 });
             }
 
@@ -360,7 +365,7 @@ class ClientHandler {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
-                ...Keyboards.getContinueShoppingKeyboard()
+                ...Keyboards.getAfterAddToCartKeyboard()
             });
         } catch (error) {
             console.error('Ошибка при добавлении в корзину:', error);
@@ -385,27 +390,13 @@ class ClientHandler {
             session.cart.forEach((item, index) => {
                 text += `${index + 1}. *${item.name}*\n`;
                 text += `   📦 Количество: ${item.quantity}\n`;
-                
-                // Показываем цену в правильной валюте
-                if (item.currency === 'CZK') {
-                    text += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
-                    text += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
-                } else {
-                    text += `   💰 Цена: ${item.price.toLocaleString('ru-RU')} ₽\n`;
-                    text += `   💵 Сумма: ${item.total.toLocaleString('ru-RU')} ₽\n\n`;
-                }
+                text += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                text += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
                 
                 totalAmount += item.total;
             });
 
-            // Определяем валюту общей суммы (берем валюту первого товара)
-            const mainCurrency = session.cart[0].currency || 'RUB';
-            if (mainCurrency === 'CZK') {
-                text += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n\n`;
-            } else {
-                text += `💳 *Общая сумма: ${totalAmount.toLocaleString('ru-RU')} ₽*\n\n`;
-            }
-            
+            text += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n\n`;
             text += `*Выберите способ оплаты:*`;
 
             await this.bot.editMessageText(text, {
@@ -419,113 +410,126 @@ class ClientHandler {
         }
     }
 
-    // 🔥 НОВЫЙ МЕТОД: Подтверждение заказа с выбранным способом оплаты
-    async showOrderConfirmation(chatId, messageId, paymentMethod) {
+    async showCardPaymentDetails(chatId, messageId) {
         try {
             const session = this.getUserSession(chatId);
-            const user = await this.db.getUserById(chatId);
-
-            if (session.cart.length === 0) {
-                await this.bot.editMessageText(
-                    "🛒 Ваша корзина пуста!",
-                    { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
-                );
-                return;
-            }
-
             const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
-            const paymentText = paymentMethod === 'card' ? '💳 Оплата картой' : '💵 Оплата наличными';
-            
-            // Определяем валюту
-            const mainCurrency = session.cart[0].currency || 'RUB';
-            const totalFormatted = mainCurrency === 'CZK' ? 
-                `${totalAmount.toLocaleString('cs-CZ')} Kč` : 
-                `${totalAmount.toLocaleString('ru-RU')} ₽`;
 
-            let text = `📋 *Подтверждение заказа*\n\n`;
-            text += `👤 *Заказчик:* ${user.firstName || 'Пользователь'}`;
-            if (user.lastName) text += ` ${user.lastName}`;
-            if (user.username) text += ` (@${user.username})`;
-            text += `\n\n`;
-
-            text += `🛒 *Ваш заказ:*\n`;
-            session.cart.forEach((item, index) => {
-                text += `${index + 1}. ${item.name} × ${item.quantity}\n`;
-            });
-
-            text += `\n💰 *Общая сумма:* ${totalFormatted}\n`;
-            text += `💳 *Способ оплаты:* ${paymentText}\n\n`;
-
-            if (paymentMethod === 'card') {
-                text += `*Оплата картой:*\n`;
-                text += `После подтверждения заказа вам будут высланы реквизиты для оплаты.\n\n`;
-            } else {
-                text += `*Оплата наличными:*\n`;
-                text += `Оплата производится при встрече с нашим представителем.\n\n`;
-            }
-
-            text += `*Подтвердите заказ:*`;
-
-            // Сохраняем выбранный способ оплаты
-            session.paymentMethod = paymentMethod;
+            const text = `💳 *Оплата на карту*\n\n` +
+                        `💰 *К оплате:* ${totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
+                        `*Реквизиты для перевода:*\n` +
+                        `🏦 Банк: ${this.paymentDetails.bank}\n` +
+                        `💳 Номер карты: \`${this.paymentDetails.cardNumber}\`\n` +
+                        `👤 Получатель: ${this.paymentDetails.cardHolder}\n` +
+                        `📝 Назначение: ${this.paymentDetails.message}\n\n` +
+                        `*После перевода нажмите кнопку "Перевёл"*`;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
-                ...Keyboards.getOrderConfirmationKeyboard()
+                ...Keyboards.getCardPaymentKeyboard()
             });
         } catch (error) {
-            console.error('Ошибка при показе подтверждения заказа:', error);
+            console.error('Ошибка при показе реквизитов:', error);
         }
     }
 
-    async showUserStats(chatId, messageId) {
+    async showCashPaymentInfo(chatId, messageId) {
         try {
-            const user = await this.db.getUserById(chatId);
-            const orders = await this.db.getOrdersByUser(chatId);
+            const session = this.getUserSession(chatId);
+            const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
 
-            let text = `📊 Ваша статистика:\n\n`;
-            text += `👤 Имя: ${user.firstName || 'Не указано'}`;
-            if (user.lastName) text += ` ${user.lastName}`;
-            text += `\n`;
-            if (user.username) text += `📱 Username: @${user.username}\n`;
-            text += `📅 Регистрация: ${user.createdAt.toLocaleDateString('ru-RU')}\n`;
-            text += `🛒 Всего заказов: ${user.totalOrders}\n`;
-            text += `💰 Потрачено: ${user.totalSpent.toLocaleString('ru-RU')} ₽\n`;
-
-            if (orders.length > 0) {
-                text += `\n📋 Последние заказы:\n`;
-                orders.slice(0, 3).forEach((order, index) => {
-                    text += `${index + 1}. ${order.createdAt.toLocaleDateString('ru-RU')} - ${order.totalAmount.toLocaleString('ru-RU')} ₽ (${order.status})\n`;
-                });
-            }
+            const text = `💵 *Оплата наличными при встрече*\n\n` +
+                        `💰 *К оплате:* ${totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
+                        `📞 *С вами свяжется наш менеджер и уточнит:*\n` +
+                        `• Удобное время встречи\n` +
+                        `• Место встречи\n` +
+                        `• Детали сделки\n\n` +
+                        `*Подтвердите заказ:*`;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]
-                    ]
-                }
+                parse_mode: 'Markdown',
+                ...Keyboards.getCashPaymentKeyboard()
             });
         } catch (error) {
-            console.error('Ошибка при показе статистики:', error);
+            console.error('Ошибка при показе информации о наличной оплате:', error);
+        }
+    }
+
+    async processCardPayment(chatId, messageId) {
+        try {
+            const text = `⏳ *Проверяем ваш платёж...*\n\n` +
+                        `После подтверждения поступления средств заказ будет обработан.\n\n` +
+                        `💬 *С вами скоро свяжется наш менеджер для уточнения деталей.*`;
+
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                ...Keyboards.getPaymentProcessingKeyboard()
+            });
+
+            // Создаем заказ со статусом "ожидает подтверждения оплаты"
+            await this.createOrderInDatabase(chatId, 'card', 'pending_payment');
+        } catch (error) {
+            console.error('Ошибка при обработке оплаты картой:', error);
+        }
+    }
+
+    async processCashPayment(chatId, messageId) {
+        try {
+            await this.createOrderInDatabase(chatId, 'cash', 'confirmed');
+
+            const text = `✅ *Заказ принят!*\n\n` +
+                        `📞 *С вами скоро свяжется наш менеджер* для уточнения деталей встречи и оплаты наличными.\n\n` +
+                        `🕐 Обычно это происходит в течение 30 минут.\n\n` +
+                        `Спасибо за ваш заказ!`;
+
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                ...Keyboards.getOrderCompleteKeyboard()
+            });
+        } catch (error) {
+            console.error('Ошибка при обработке наличной оплаты:', error);
         }
     }
 
     async completeOrder(chatId, messageId) {
         try {
             const session = this.getUserSession(chatId);
+            
+            // Очищаем корзину
+            session.cart = [];
+            session.state = 'start';
+
+            const text = `✅ *Спасибо за подтверждение!*\n\n` +
+                        `📞 *С вами скоро свяжется наш менеджер* для уточнения деталей.\n\n` +
+                        `🕐 Обычно это происходит в течение 30 минут.\n\n` +
+                        `Хотите что-то ещё?`;
+
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                ...Keyboards.getOrderCompleteKeyboard()
+            });
+        } catch (error) {
+            console.error('Ошибка при завершении заказа:', error);
+        }
+    }
+
+    async createOrderInDatabase(chatId, paymentMethod, status = 'new') {
+        try {
+            const session = this.getUserSession(chatId);
             const user = await this.db.getUserById(chatId);
 
             if (session.cart.length === 0) {
-                await this.bot.editMessageText(
-                    "🛒 Ваша корзина пуста!",
-                    { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
-                );
-                return;
+                throw new Error('Корзина пуста');
             }
 
             const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
@@ -538,7 +542,9 @@ class ClientHandler {
                 lastName: user.lastName,
                 phone: user.phone,
                 items: session.cart,
-                totalAmount: totalAmount
+                totalAmount: totalAmount,
+                paymentMethod: paymentMethod,
+                status: status
             });
 
             // Формируем текст заказа для операторов
@@ -552,11 +558,12 @@ class ClientHandler {
             session.cart.forEach((item, index) => {
                 orderText += `${index + 1}. ${item.name}\n`;
                 orderText += `   📦 Количество: ${item.quantity}\n`;
-                orderText += `   💰 Цена за единицу: ${item.price.toLocaleString('ru-RU')} ₽\n`;
-                orderText += `   💵 Сумма: ${item.total.toLocaleString('ru-RU')} ₽\n\n`;
+                orderText += `   💰 Цена за единицу: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
             });
 
-            orderText += `💳 Общая сумма: ${totalAmount.toLocaleString('ru-RU')} ₽\n`;
+            orderText += `💳 Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč\n`;
+            orderText += `💳 Способ оплаты: ${paymentMethod === 'card' ? 'Карта' : 'Наличные'}\n`;
             orderText += `📅 Дата заказа: ${new Date().toLocaleString('ru-RU')}\n`;
             orderText += `\n🔔 Свяжитесь с клиентом для уточнения деталей!`;
 
@@ -569,20 +576,11 @@ class ClientHandler {
                 }
             }
 
-            // Очищаем корзину
-            session.cart = [];
-            session.state = 'start';
-
-            const thankText = `✅ Спасибо за заказ!\n\nВаш заказ #${order._id} на сумму ${totalAmount.toLocaleString('ru-RU')} ₽ принят.\nС вами скоро свяжется наш оператор.\n\n📞 Если у вас есть срочные вопросы, вы можете связаться с оператором напрямую.`;
-
-            await this.bot.editMessageText(thankText, {
-                chat_id: chatId,
-                message_id: messageId,
-                ...Keyboards.getStartKeyboard()
-            });
+            return order;
 
         } catch (error) {
-            console.error('Ошибка при оформлении заказа:', error);
+            console.error('Ошибка при создании заказа:', error);
+            throw error;
         }
     }
 
@@ -593,7 +591,16 @@ class ClientHandler {
             session.state = 'waiting_custom_quantity';
             session.currentProperty = propertyId;
 
-            const text = `🏠 ${property.name}\n\n💰 Цена: ${property.price.toLocaleString('ru-RU')} ₽\n\n📝 Напишите желаемое количество числом:`;
+            // Показываем цену в кронах
+            let priceText = 'Цена не указана';
+            if (property.priceInCZK) {
+                priceText = `${property.priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            } else if (property.price) {
+                const priceInCZK = Math.round(property.price * 0.4);
+                priceText = `${priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            }
+
+            const text = `🏠 ${property.name}\n\n💰 Цена: ${priceText}\n\n📝 Напишите желаемое количество числом:`;
 
             await this.bot.editMessageText(text, {
                 chat_id: chatId,
@@ -636,6 +643,45 @@ class ClientHandler {
             // Добавляем в корзину
             await this.addToCart(chatId, msg.message_id - 1, session.currentProperty, quantity);
             session.state = 'browsing_properties';
+        }
+    }
+
+    async showUserStats(chatId, messageId) {
+        try {
+            const user = await this.db.getUserById(chatId);
+            const orders = await this.db.getOrdersByUser(chatId);
+
+            let text = `📊 Ваша статистика:\n\n`;
+            text += `👤 Имя: ${user.firstName || 'Не указано'}`;
+            if (user.lastName) text += ` ${user.lastName}`;
+            text += `\n`;
+            if (user.username) text += `📱 Username: @${user.username}\n`;
+            text += `📅 Регистрация: ${user.createdAt.toLocaleDateString('ru-RU')}\n`;
+            text += `🛒 Всего заказов: ${user.totalOrders}\n`;
+            
+            // Показываем сумму в кронах
+            const totalSpentCZK = Math.round(user.totalSpent * 0.4); // Конвертируем из рублей
+            text += `💰 Потрачено: ${totalSpentCZK.toLocaleString('cs-CZ')} Kč\n`;
+
+            if (orders.length > 0) {
+                text += `\n📋 Последние заказы:\n`;
+                orders.slice(0, 3).forEach((order, index) => {
+                    const orderAmountCZK = Math.round(order.totalAmount * 0.4);
+                    text += `${index + 1}. ${order.createdAt.toLocaleDateString('ru-RU')} - ${orderAmountCZK.toLocaleString('cs-CZ')} Kč (${order.status})\n`;
+                });
+            }
+
+            await this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]
+                    ]
+                }
+            });
+        } catch (error) {
+            console.error('Ошибка при показе статистики:', error);
         }
     }
 

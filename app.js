@@ -21,7 +21,7 @@ console.log('- ADMIN_IDS:', adminConfig.getAdminIds().length, 'админист�
 class RealEstateBot {
     constructor() {
         console.log('🤖 Инициализация бота...');
-        
+
         try {
             this.bot = new TelegramBot(config.BOT_TOKEN, { polling: true });
             console.log('✅ Telegram Bot API подключен');
@@ -45,12 +45,12 @@ class RealEstateBot {
             console.error('❌ Ошибка создания ClientHandler:', error);
             process.exit(1);
         }
-        
+
         try {
             // Инициализация админ модулей
             this.adminUtils = new AdminUtils(this.bot);
             this.adminHandler = new AdminHandler(this.bot, adminConfig.getAdminIds());
-            
+
             // Делаем adminUtils глобальным для доступа из других модулей
             global.adminUtils = this.adminUtils;
             console.log('✅ Админ модули созданы');
@@ -58,12 +58,12 @@ class RealEstateBot {
             console.error('❌ Ошибка создания админ модулей:', error);
             process.exit(1);
         }
-        
+
         this.setupHandlers();
-        
+
         // Запуск очистки сессий
         this.adminUtils.startSessionCleaner();
-        
+
         // Очистка старых обновлений
         this.bot.getUpdates({ offset: -1 }).then(() => {
             console.log('🧹 Старые обновления очищены');
@@ -115,23 +115,23 @@ class RealEstateBot {
                 photo_count: msg.photo.length,
                 caption: msg.caption
             });
-            
+
             // Проверяем, что это администратор
             if (!adminConfig.isAdmin(msg.from.id)) {
                 console.log('🚫 Пользователь не является администратором');
                 return this.bot.sendMessage(msg.chat.id, '❌ Только администраторы могут загружать фотографии');
             }
-            
+
             // Проверяем наличие активной сессии
             const session = this.adminUtils.getSession(msg.from.id);
             console.log('🔍 Проверка сессии перед загрузкой фотографии:', session);
-            
+
             if (!session || session.type !== 'uploading_product_photo') {
                 console.log('❌ Нет активной сессии загрузки фотографии');
-                return this.bot.sendMessage(msg.chat.id, 
+                return this.bot.sendMessage(msg.chat.id,
                     '❌ Сначала выберите товар для добавления фотографии через команду /admin → Управление товарами → Редактировать товар → Управление фото → Добавить фото');
             }
-            
+
             console.log('✅ Передача фотографии в AdminHandler');
             // Передаем обработку фотографии в AdminHandler
             this.adminHandler.handlePhotoUpload(msg);
@@ -140,15 +140,15 @@ class RealEstateBot {
         // Обработка callback запросов
         this.bot.on('callback_query', (callbackQuery) => {
             console.log('📞 Получен callback от пользователя:', callbackQuery.from.id, 'данные:', callbackQuery.data);
-            
+
             // Если это админский callback и пользователь админ
-            if (adminConfig.isAdmin(callbackQuery.from.id) && 
+            if (adminConfig.isAdmin(callbackQuery.from.id) &&
                 callbackQuery.data.startsWith('admin_')) {
                 console.log('👑 Обработка админского callback');
                 // AdminHandler уже обрабатывает админские callback'и
                 return;
             }
-            
+
             // Обычные callback'и для клиентов
             console.log('👤 Обработка клиентского callback');
             this.clientHandler.handleCallback(callbackQuery);
@@ -158,12 +158,12 @@ class RealEstateBot {
         this.bot.on('message', (msg) => {
             // Пропускаем команды
             if (msg.text && msg.text.startsWith('/')) return;
-            
+
             // Пропускаем фотографии (они обрабатываются отдельно)
             if (msg.photo) return;
-            
+
             console.log('💬 Получено текстовое сообщение от пользователя:', msg.from.id);
-            
+
             // Проверяем, есть ли активная админская сессия
             const session = this.adminUtils.getSession(msg.from.id);
             if (session && adminConfig.isAdmin(msg.from.id)) {
@@ -171,7 +171,7 @@ class RealEstateBot {
                 this.handleAdminInput(msg, session);
                 return;
             }
-            
+
             // Обычная обработка для клиентов
             console.log('👤 Обработка клиентского сообщения');
             this.clientHandler.handleTextMessage(msg);
@@ -199,47 +199,47 @@ class RealEstateBot {
                 case 'adding_category_name':
                     await this.handleCategoryNameInput(chatId, userId, text);
                     break;
-                    
+
                 case 'editing_category_name':
                     await this.handleEditCategoryName(chatId, userId, text, session.data.categoryId);
                     break;
-                    
+
                 case 'adding_product_name':
                     await this.handleProductNameInput(chatId, userId, text, session.data.categoryId);
                     break;
-                    
+
                 case 'adding_product_price':
                     await this.handleNewProductPriceInput(chatId, userId, text, session.data);
                     break;
-                    
+
                 case 'editing_product_name':
                     await this.handleEditProductName(chatId, userId, text, session.data.productId);
                     break;
-                    
+
                 case 'editing_product_description':
                     await this.handleEditProductDescription(chatId, userId, text, session.data.productId);
                     break;
-                    
+
                 case 'editing_product_price':
                     await this.handleProductPriceInput(chatId, userId, text, session.data.productId);
                     break;
-                    
+
                 case 'adding_operator_name':
                     await this.handleOperatorNameInput(chatId, userId, text);
                     break;
-                    
+
                 case 'adding_operator_username':
                     await this.handleOperatorUsernameInput(chatId, userId, text, session.data.operatorName);
                     break;
-                    
+
                 case 'editing_operator_name':
                     await this.handleEditOperatorName(chatId, userId, text, session.data.operatorId);
                     break;
-                    
+
                 case 'editing_operator_username':
                     await this.handleEditOperatorUsername(chatId, userId, text, session.data.operatorId);
                     break;
-                    
+
                 default:
                     console.log('Неизвестный тип сессии:', session.type);
                     this.adminUtils.clearSession(userId);
@@ -272,12 +272,12 @@ class RealEstateBot {
 
             await category.save();
             this.adminUtils.clearSession(userId);
-            
+
             const escapedName = this.escapeMarkdown(validation.value);
             this.bot.sendMessage(chatId, `✅ Категория "${escapedName}" успешно создана!`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Create category error:', error);
@@ -295,13 +295,13 @@ class RealEstateBot {
         try {
             const Category = require('./models/Category');
             await Category.findByIdAndUpdate(categoryId, { name: validation.value });
-            
+
             this.adminUtils.clearSession(userId);
             const escapedName = this.escapeMarkdown(validation.value);
             this.bot.sendMessage(chatId, `✅ Название категории обновлено на "${escapedName}"`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Edit category name error:', error);
@@ -331,14 +331,14 @@ class RealEstateBot {
 
     async handleNewProductPriceInput(chatId, userId, text, sessionData) {
         const priceValue = parseInt(text.replace(/\D/g, ''));
-        
+
         if (isNaN(priceValue) || priceValue <= 0) {
             return this.bot.sendMessage(chatId, `❌ Введите корректную цену (только числа):\nПопробуйте еще раз:`);
         }
 
         try {
             const Property = require('./models/Property');
-            
+
             const priceCZK = priceValue;
             const priceRUB = Math.round(priceValue * 2.5);
 
@@ -357,12 +357,12 @@ class RealEstateBot {
 
             await product.save();
             this.adminUtils.clearSession(userId);
-            
+
             const escapedName = this.escapeMarkdown(sessionData.productName);
             this.bot.sendMessage(chatId, `✅ Товар "${escapedName}" создан!\n\n💰 Цена: ${this.formatPrice(priceCZK, 'CZK')}\n\n📷 Теперь вы можете добавить фотографии через редактирование товара.`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Create product error:', error);
@@ -380,13 +380,13 @@ class RealEstateBot {
         try {
             const Property = require('./models/Property');
             await Property.findByIdAndUpdate(productId, { name: validation.value });
-            
+
             this.adminUtils.clearSession(userId);
             const escapedName = this.escapeMarkdown(validation.value);
             this.bot.sendMessage(chatId, `✅ Название товара обновлено на "${escapedName}"`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Edit product name error:', error);
@@ -397,7 +397,7 @@ class RealEstateBot {
 
     async handleEditProductDescription(chatId, userId, text, productId) {
         console.log('Обработка редактирования описания товара:', { userId, productId, text: text?.substring(0, 50) });
-        
+
         if (!text || text.trim().length === 0) {
             return this.bot.sendMessage(chatId, `❌ Описание не может быть пустым.\nПопробуйте еще раз:`);
         }
@@ -410,17 +410,17 @@ class RealEstateBot {
         try {
             const Property = require('./models/Property');
             const product = await Property.findById(productId);
-            
+
             if (!product) {
                 this.adminUtils.clearSession(userId);
                 return this.bot.sendMessage(chatId, '❌ Товар не найден');
             }
 
             await Property.findByIdAndUpdate(productId, { description: trimmedText });
-            
+
             this.adminUtils.clearSession(userId);
             this.bot.sendMessage(chatId, '✅ Описание товара обновлено!');
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Edit product description error:', error);
@@ -431,7 +431,7 @@ class RealEstateBot {
 
     async handleProductPriceInput(chatId, userId, text, productId) {
         const priceData = this.parsePriceWithCurrency(text);
-        
+
         if (!priceData.valid) {
             return this.bot.sendMessage(chatId, `❌ ${priceData.error}\n\nПримеры:\n• 5000000 (рубли)\n• 5000000 RUB\n• 2000000 CZK\n• 2000000 крон\n\nПопробуйте еще раз:`);
         }
@@ -439,14 +439,14 @@ class RealEstateBot {
         try {
             const Property = require('./models/Property');
             const product = await Property.findById(productId);
-            
+
             if (!product) {
                 this.adminUtils.clearSession(userId);
                 return this.bot.sendMessage(chatId, '❌ Товар не найден.');
             }
 
             let updateData = {};
-            
+
             if (priceData.currency === 'CZK') {
                 updateData.priceInCZK = priceData.value;
                 updateData.price = Math.round(priceData.value * 2.5);
@@ -458,12 +458,12 @@ class RealEstateBot {
             }
 
             await Property.findByIdAndUpdate(productId, updateData);
-            
+
             this.adminUtils.clearSession(userId);
             this.bot.sendMessage(chatId, `✅ Цена товара обновлена!\n\n💰 Новая цена:\n• ${this.formatPrice(updateData.price, 'RUB')}\n• ${this.formatPrice(updateData.priceInCZK, 'CZK')}\n\n🎯 Основная валюта: ${priceData.currency}`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Edit product price error:', error);
@@ -476,7 +476,7 @@ class RealEstateBot {
 
     parsePriceWithCurrency(text) {
         const input = text.trim().toLowerCase();
-        
+
         const patterns = [
             /^(\d+(?:\.\d+)?)\s*(czk|чеш|крон|кчк|kč)$/i,
             /^(\d+(?:\.\d+)?)\s*(rub|руб|рубл)$/i,
@@ -491,8 +491,8 @@ class RealEstateBot {
 
                 if (match[2]) {
                     const currencyStr = match[2].toLowerCase();
-                    if (currencyStr.includes('czk') || currencyStr.includes('чеш') || 
-                        currencyStr.includes('крон') || currencyStr.includes('кчк') || 
+                    if (currencyStr.includes('czk') || currencyStr.includes('чеш') ||
+                        currencyStr.includes('крон') || currencyStr.includes('кчк') ||
                         currencyStr.includes('kč')) {
                         currency = 'CZK';
                     }
@@ -518,15 +518,15 @@ class RealEstateBot {
             }
         }
 
-        return { 
-            valid: false, 
-            error: 'Неверный формат цены. Используйте: "цена валюта" (например: 2000000 CZK или 5000000 RUB)' 
+        return {
+            valid: false,
+            error: 'Неверный формат цены. Используйте: "цена валюта" (например: 2000000 CZK или 5000000 RUB)'
         };
     }
 
     formatPrice(price, currency) {
         const formatted = new Intl.NumberFormat('ru-RU').format(price);
-        
+
         switch (currency) {
             case 'CZK':
                 return `${formatted} Kč`;
@@ -536,7 +536,7 @@ class RealEstateBot {
                 return `${formatted} ${currency}`;
         }
     }
-    
+
     // === ОБРАБОТЧИКИ ОПЕРАТОРОВ ===
 
     async handleOperatorNameInput(chatId, userId, text) {
@@ -557,7 +557,7 @@ class RealEstateBot {
 
     async handleOperatorUsernameInput(chatId, userId, text, operatorName) {
         const username = text.trim().replace('@', '');
-        
+
         if (!username || username.length < 3) {
             return this.bot.sendMessage(chatId, `❌ Username должен содержать минимум 3 символа\nПопробуйте еще раз:`);
         }
@@ -568,7 +568,7 @@ class RealEstateBot {
 
         try {
             const Operator = require('./models/Operator');
-            
+
             const existingOperator = await Operator.findOne({ username: username });
             if (existingOperator) {
                 return this.bot.sendMessage(chatId, `❌ Оператор с username @${username} уже существует\nВведите другой username:`);
@@ -585,12 +585,12 @@ class RealEstateBot {
 
             await operator.save();
             this.adminUtils.clearSession(userId);
-            
+
             const escapedName = this.escapeMarkdown(operatorName);
             this.bot.sendMessage(chatId, `✅ Оператор "${escapedName}" (@${username}) успешно создан!`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Create operator error:', error);
@@ -608,13 +608,13 @@ class RealEstateBot {
         try {
             const Operator = require('./models/Operator');
             await Operator.findByIdAndUpdate(operatorId, { name: validation.value });
-            
+
             this.adminUtils.clearSession(userId);
             const escapedName = this.escapeMarkdown(validation.value);
             this.bot.sendMessage(chatId, `✅ Имя оператора обновлено на "${escapedName}"`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Edit operator name error:', error);
@@ -625,7 +625,7 @@ class RealEstateBot {
 
     async handleEditOperatorUsername(chatId, userId, text, operatorId) {
         const username = text.trim().replace('@', '');
-        
+
         if (!username || username.length < 3) {
             return this.bot.sendMessage(chatId, `❌ Username должен содержать минимум 3 символа\nПопробуйте еще раз:`);
         }
@@ -636,28 +636,187 @@ class RealEstateBot {
 
         try {
             const Operator = require('./models/Operator');
-            
-            const existingOperator = await Operator.findOne({ 
-                username: username, 
-                _id: { $ne: operatorId } 
+
+            const existingOperator = await Operator.findOne({
+                username: username,
+                _id: { $ne: operatorId }
             });
-            
+
             if (existingOperator) {
                 return this.bot.sendMessage(chatId, `❌ Оператор с username @${username} уже существует\nВведите другой username:`);
             }
 
             await Operator.findByIdAndUpdate(operatorId, { username: username });
-            
+
             this.adminUtils.clearSession(userId);
             this.bot.sendMessage(chatId, `✅ Username оператора обновлен на "@${username}"`, {
                 parse_mode: 'Markdown'
             });
-            
+
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Edit operator username error:', error);
             this.adminUtils.clearSession(userId);
             this.bot.sendMessage(chatId, '❌ Ошибка при обновлении username оператора.');
+        }
+
+
+    }
+
+    async handleNewProductPriceInput(chatId, userId, text, sessionData) {
+        const validation = this.adminUtils.validatePrice(text);
+
+        if (!validation.valid) {
+            return this.bot.sendMessage(chatId, `❌ ${validation.error}\nПопробуйте еще раз:`);
+        }
+
+        try {
+            const Property = require('./models/Property');
+
+            const priceCZK = validation.value;
+
+            const product = new Property({
+                categoryId: sessionData.categoryId,
+                name: sessionData.productName,
+                description: '',
+                priceInCZK: priceCZK,
+                currency: 'CZK',
+                specifications: {},
+                isAvailable: true,
+                order: 0,
+                photos: []
+            });
+
+            await product.save();
+            this.adminUtils.clearSession(userId);
+
+            const escapedName = this.escapeMarkdown(sessionData.productName);
+            this.bot.sendMessage(chatId, `✅ Товар "${escapedName}" создан!\n\n💰 Цена: ${this.formatPrice(priceCZK)}\n\n📷 Теперь вы можете добавить фотографии через редактирование товара.`, {
+                parse_mode: 'Markdown'
+            });
+
+            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
+        } catch (error) {
+            console.error('Create product error:', error);
+            this.adminUtils.clearSession(userId);
+            this.bot.sendMessage(chatId, '❌ Ошибка при создании товара.');
+        }
+    }
+
+    async handleProductPriceInput(chatId, userId, text, productId) {
+        const validation = this.adminUtils.validatePrice(text);
+
+        if (!validation.valid) {
+            return this.bot.sendMessage(chatId, `❌ ${validation.error}\n\nПопробуйте еще раз:`);
+        }
+
+        try {
+            const Property = require('./models/Property');
+            const product = await Property.findById(productId);
+
+            if (!product) {
+                this.adminUtils.clearSession(userId);
+                return this.bot.sendMessage(chatId, '❌ Товар не найден.');
+            }
+
+            const priceCZK = validation.value;
+
+            const updateData = {
+                priceInCZK: priceCZK,
+                currency: 'CZK'
+            };
+
+            await Property.findByIdAndUpdate(productId, updateData);
+
+            this.adminUtils.clearSession(userId);
+            this.bot.sendMessage(chatId, `✅ Цена товара обновлена!\n\n💰 Новая цена: ${this.formatPrice(priceCZK)}`, {
+                parse_mode: 'Markdown'
+            });
+
+            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
+        } catch (error) {
+            console.error('Edit product price error:', error);
+            this.adminUtils.clearSession(userId);
+            this.bot.sendMessage(chatId, '❌ Ошибка при обновлении цены товара.');
+        }
+    }
+
+    // === УПРОЩЕННЫЙ МЕТОД ФОРМАТИРОВАНИЯ ЦЕНЫ ===
+
+    formatPrice(price) {
+        return `${new Intl.NumberFormat('cs-CZ').format(price)} Kč`;
+    }
+
+    // === ОБНОВЛЕННЫЙ МЕТОД completeOrder ===
+
+    async completeOrder(chatId, messageId) {
+        try {
+            const session = this.getUserSession(chatId);
+            const user = await this.db.getUserById(chatId);
+
+            if (session.cart.length === 0) {
+                await this.bot.editMessageText(
+                    "🛒 Ваша корзина пуста!",
+                    { chat_id: chatId, message_id: messageId, ...Keyboards.getStartKeyboard() }
+                );
+                return;
+            }
+
+            const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
+
+            // Создаем заказ в базе данных
+            const order = await this.db.createOrder({
+                userId: chatId,
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                phone: user.phone,
+                items: session.cart,
+                totalAmount: totalAmount
+            });
+
+            // Формируем текст заказа для операторов
+            let orderText = `📋 Новый заказ #${order._id}\n\n`;
+            orderText += `👤 От: ${user.firstName || 'Пользователь'}`;
+            if (user.lastName) orderText += ` ${user.lastName}`;
+            orderText += `\n`;
+            if (user.username) orderText += `📱 @${user.username}\n`;
+            orderText += `🆔 ID: ${chatId}\n\n`;
+
+            session.cart.forEach((item, index) => {
+                orderText += `${index + 1}. ${item.name}\n`;
+                orderText += `   📦 Количество: ${item.quantity}\n`;
+                orderText += `   💰 Цена за единицу: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
+            });
+
+            orderText += `💳 Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč\n`;
+            orderText += `📅 Дата заказа: ${new Date().toLocaleString('ru-RU')}\n`;
+            orderText += `\n🔔 Свяжитесь с клиентом для уточнения деталей!`;
+
+            // Отправляем заказ операторам
+            for (const operatorId of Object.values(config.OPERATORS)) {
+                try {
+                    await this.bot.sendMessage(operatorId, orderText);
+                } catch (error) {
+                    console.error(`Не удалось отправить заказ оператору ${operatorId}:`, error);
+                }
+            }
+
+            // Очищаем корзину
+            session.cart = [];
+            session.state = 'start';
+
+            const thankText = `✅ Спасибо за заказ!\n\nВаш заказ #${order._id} на сумму ${totalAmount.toLocaleString('cs-CZ')} Kč принят.\nС вами скоро свяжется наш оператор.\n\n📞 Если у вас есть срочные вопросы, вы можете связаться с оператором напрямую.`;
+
+            await this.bot.editMessageText(thankText, {
+                chat_id: chatId,
+                message_id: messageId,
+                ...Keyboards.getStartKeyboard()
+            });
+
+        } catch (error) {
+            console.error('Ошибка при оформлении заказа:', error);
         }
     }
 }

@@ -25,19 +25,22 @@ const propertySchema = new mongoose.Schema({
         trim: true,
         default: ''
     },
-    price: { 
-        type: Number, 
-        required: true, 
-        min: 0 
-    },
+    // Основная цена в кронах
     priceInCZK: { 
         type: Number, 
+        required: true,
         min: 0 
     },
+    // Валюта всегда CZK
     currency: { 
         type: String, 
-        enum: ['RUB', 'CZK'], 
-        default: 'RUB' 
+        enum: ['CZK'], 
+        default: 'CZK' 
+    },
+    // Для совместимости со старыми записями
+    price: { 
+        type: Number, 
+        min: 0 
     },
     specifications: {
         area: Number,
@@ -68,6 +71,23 @@ propertySchema.virtual('mainPhoto').get(function() {
     return this.photos.find(photo => photo.isMain) || this.photos[0];
 });
 
+// Виртуальное поле для получения цены в кронах (приоритет priceInCZK)
+propertySchema.virtual('displayPrice').get(function() {
+    if (this.priceInCZK) {
+        return this.priceInCZK;
+    } else if (this.price) {
+        // Конвертируем старые цены из рублей в кроны (примерный курс 1 RUB = 0.4 CZK)
+        return Math.round(this.price * 0.4);
+    }
+    return 0;
+});
+
+// Виртуальное поле для форматированной цены
+propertySchema.virtual('formattedPrice').get(function() {
+    const price = this.displayPrice;
+    return `${new Intl.NumberFormat('cs-CZ').format(price)} Kč`;
+});
+
 // Методы для работы с фотографиями
 propertySchema.methods.addPhoto = function(photoData) {
     this.photos.push(photoData);
@@ -93,6 +113,43 @@ propertySchema.methods.setMainPhoto = function(photoIndex) {
         this.photos[photoIndex].isMain = true;
     }
     return this.save();
+};
+
+// Middleware для обеспечения совместимости при сохранении
+propertySchema.pre('save', function(next) {
+    // Если указана только старая цена в рублях, конвертируем в кроны
+    if (!this.priceInCZK && this.price) {
+        this.priceInCZK = Math.round(this.price * 0.4);
+    }
+    
+    // Устанавливаем валюту по умолчанию
+    if (!this.currency) {
+        this.currency = 'CZK';
+    }
+    
+    next();
+});
+
+// Статические методы
+propertySchema.statics.findByPriceRange = function(minPrice, maxPrice) {
+    return this.find({
+        priceInCZK: { $gte: minPrice, $lte: maxPrice },
+        isAvailable: true
+    }).populate('categoryId');
+};
+
+propertySchema.statics.findExpensive = function(limit = 10) {
+    return this.find({ isAvailable: true })
+        .sort({ priceInCZK: -1 })
+        .limit(limit)
+        .populate('categoryId');
+};
+
+propertySchema.statics.findAffordable = function(maxPrice = 2000000) {
+    return this.find({
+        priceInCZK: { $lte: maxPrice },
+        isAvailable: true
+    }).populate('categoryId');
 };
 
 // Включаем виртуальные поля в JSON

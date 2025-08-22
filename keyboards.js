@@ -1,4 +1,4 @@
-// keyboards.js - Исправленные клавиатуры
+// keyboards.js - Обновленные клавиатуры для нового процесса оплаты
 const config = require('./config/config');
 
 class Keyboards {
@@ -13,7 +13,6 @@ class Keyboards {
         };
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД - добавлен метод для категорий
     static getCategoriesKeyboard(categories) {
         const keyboard = categories.map(category => [{
             text: `📂 ${category.name}`,
@@ -29,15 +28,18 @@ class Keyboards {
         };
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД - убрано дублирование и исправлено отображение цен
     static getPropertiesKeyboard(properties, categoryId) {
         const keyboard = properties.map(property => {
-            // Показываем цену в правильной валюте
+            // Показываем цену только в кронах
             let price;
-            if (property.currency === 'CZK' && property.priceInCZK) {
+            if (property.priceInCZK) {
                 price = `${property.priceInCZK.toLocaleString('cs-CZ')} Kč`;
+            } else if (property.price) {
+                // Конвертируем из рублей в кроны (примерный курс)
+                const priceInCZK = Math.round(property.price * 0.4);
+                price = `${priceInCZK.toLocaleString('cs-CZ')} Kč`;
             } else {
-                price = `${property.price.toLocaleString('ru-RU')} ₽`;
+                price = 'Цена не указана';
             }
 
             return [{
@@ -86,12 +88,13 @@ class Keyboards {
         };
     }
 
-    static getContinueShoppingKeyboard() {
+    // НОВАЯ клавиатура после добавления товара в корзину (согласно сценарию)
+    static getAfterAddToCartKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "➕ Выбрать еще товары", callback_data: "continue_shopping" }],
-                    [{ text: "🛒 Перейти к оформлению", callback_data: "view_cart" }]
+                    [{ text: "🛒 Перейти к оплате", callback_data: "proceed_to_payment" }],
+                    [{ text: "➕ Выбрать ещё товары", callback_data: "choose_more_items" }]
                 ]
             }
         };
@@ -101,10 +104,10 @@ class Keyboards {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "💳 Оплата картой", callback_data: "payment_card" }],
-                    [{ text: "💵 Оплата наличными", callback_data: "payment_cash" }],
+                    [{ text: "💳 Оплата на карту", callback_data: "payment_card" }],
+                    [{ text: "💵 Оплата наличными при встрече", callback_data: "payment_cash" }],
                     [
-                        { text: "➕ Добавить еще", callback_data: "continue_shopping" },
+                        { text: "➕ Добавить еще", callback_data: "choose_more_items" },
                         { text: "🗑️ Очистить корзину", callback_data: "clear_cart" }
                     ]
                 ]
@@ -112,15 +115,14 @@ class Keyboards {
         };
     }
 
-    // 🔥 НОВАЯ КЛАВИАТУРА: Подтверждение заказа с выбором оплаты
-    static getOrderConfirmationKeyboard() {
+    // НОВАЯ клавиатура для отображения реквизитов карты
+    static getCardPaymentKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "💳 Оплатить картой", callback_data: "confirm_order_card" }],
-                    [{ text: "💵 Оплатить наличными", callback_data: "confirm_order_cash" }],
+                    [{ text: "✅ Перевёл", callback_data: "confirm_card_payment" }],
                     [
-                        { text: "✏️ Изменить заказ", callback_data: "view_cart" },
+                        { text: "◀️ Назад к корзине", callback_data: "view_cart" },
                         { text: "❌ Отменить", callback_data: "back_to_start" }
                     ]
                 ]
@@ -128,12 +130,39 @@ class Keyboards {
         };
     }
 
-    // 🔥 НОВАЯ КЛАВИАТУРА: После успешного заказа
+    // НОВАЯ клавиатура для оплаты наличными
+    static getCashPaymentKeyboard() {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "✅ Подтверждаю заказ", callback_data: "confirm_cash_payment" }],
+                    [
+                        { text: "◀️ Назад к корзине", callback_data: "view_cart" },
+                        { text: "❌ Отменить", callback_data: "back_to_start" }
+                    ]
+                ]
+            }
+        };
+    }
+
+    // НОВАЯ клавиатура для обработки платежа
+    static getPaymentProcessingKeyboard() {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "✅ Платёж прошёл", callback_data: "payment_completed" }],
+                    [{ text: "🏠 В главное меню", callback_data: "back_to_start" }]
+                ]
+            }
+        };
+    }
+
+    // НОВАЯ клавиатура после завершения заказа
     static getOrderCompleteKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "🏠 Посмотреть еще товары", callback_data: "work_with_bot" }],
+                    [{ text: "🏠 Посмотреть ещё товары", callback_data: "work_with_bot" }],
                     [{ text: "📞 Связаться с оператором", callback_data: "contact_operator" }],
                     [{ text: "🏠 В главное меню", callback_data: "back_to_start" }]
                 ]
