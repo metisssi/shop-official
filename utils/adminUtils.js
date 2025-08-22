@@ -1,4 +1,4 @@
-// adminUtils.js - Упрощенная версия для работы только с кронами (CZK)
+// adminUtils.js - Убраны ограничения по минимальной/максимальной цене
 
 const Category = require('../models/Category');
 const Property = require('../models/Property');
@@ -80,7 +80,7 @@ class AdminUtils {
         return { valid: true, value: trimmed };
     }
 
-    // Упрощенная валидация цены только для крон
+    // ИСПРАВЛЕННАЯ валидация цены - убраны все ограничения
     validatePrice(priceInput) {
         if (!priceInput || typeof priceInput !== 'string') {
             return { valid: false, error: 'Цена не может быть пустой' };
@@ -94,16 +94,7 @@ class AdminUtils {
             return { valid: false, error: 'Цена должна быть положительным числом' };
         }
 
-        // Минимальная цена 50,000 крон
-        if (value < 50000) {
-            return { valid: false, error: 'Минимальная цена: 50,000 Kč' };
-        }
-
-        // Максимальная цена 500,000,000 крон
-        if (value > 500000000) {
-            return { valid: false, error: 'Максимальная цена: 500,000,000 Kč' };
-        }
-
+        // УБРАНЫ ВСЕ ОГРАНИЧЕНИЯ - любая положительная цена допустима
         return { valid: true, value: Math.round(value), currency: 'CZK' };
     }
 

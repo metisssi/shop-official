@@ -1,4 +1,4 @@
-// keyboards.js - Обновленные клавиатуры для нового процесса оплаты
+// keyboards.js - Улучшенные клавиатуры с возможностью просмотра корзины
 const config = require('./config/config');
 
 class Keyboards {
@@ -13,11 +13,16 @@ class Keyboards {
         };
     }
 
-    static getCategoriesKeyboard(categories) {
+    static getCategoriesKeyboard(categories, showCartButton = false) {
         const keyboard = categories.map(category => [{
             text: `📂 ${category.name}`,
             callback_data: `category_${category._id}`
         }]);
+
+        // Добавляем кнопку корзины если есть товары
+        if (showCartButton) {
+            keyboard.push([{ text: "🛒 Моя корзина", callback_data: "view_cart" }]);
+        }
 
         keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
 
@@ -28,7 +33,7 @@ class Keyboards {
         };
     }
 
-    static getPropertiesKeyboard(properties, categoryId) {
+    static getPropertiesKeyboard(properties, categoryId, showCartButton = false) {
         const keyboard = properties.map(property => {
             // Показываем цену только в кронах
             let price;
@@ -48,6 +53,11 @@ class Keyboards {
             }];
         });
 
+        // Добавляем кнопку корзины если есть товары
+        if (showCartButton) {
+            keyboard.push([{ text: "🛒 Моя корзина", callback_data: "view_cart" }]);
+        }
+
         keyboard.push([{ text: "◀️ Назад к категориям", callback_data: "back_to_categories" }]);
 
         return {
@@ -57,18 +67,29 @@ class Keyboards {
         };
     }
 
-    static getPropertyDetailKeyboard(propertyId, categoryId) {
+    static getPropertyDetailKeyboard(propertyId, categoryId, showCartButton = false) {
+        const keyboard = [
+            [{ text: "🛒 Выбрать количество", callback_data: `select_quantity_${propertyId}` }]
+        ];
+
+        // Добавляем кнопку корзины если есть товары
+        if (showCartButton) {
+            keyboard.push([{ text: "🛒 Моя корзина", callback_data: "view_cart" }]);
+        }
+
+        keyboard.push([{ text: "◀️ Назад к списку", callback_data: `category_${categoryId}` }]);
+
         return {
             reply_markup: {
-                inline_keyboard: [
-                    [{ text: "🛒 Выбрать количество", callback_data: `select_quantity_${propertyId}` }],
-                    [{ text: "◀️ Назад к списку", callback_data: `category_${categoryId}` }]
-                ]
+                inline_keyboard: keyboard
             }
         };
     }
 
+    // Клавиатура для выбора количества
     static getQuantityKeyboard(propertyId) {
+        console.log('🎹 Создание клавиатуры количества для товара:', propertyId);
+        
         return {
             reply_markup: {
                 inline_keyboard: [
@@ -88,13 +109,14 @@ class Keyboards {
         };
     }
 
-    // НОВАЯ клавиатура после добавления товара в корзину (согласно сценарию)
+    // Клавиатура после добавления товара в корзину (согласно сценарию)
     static getAfterAddToCartKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: "🛒 Перейти к оплате", callback_data: "proceed_to_payment" }],
-                    [{ text: "➕ Выбрать ещё товары", callback_data: "choose_more_items" }]
+                    [{ text: "➕ Выбрать ещё товары", callback_data: "choose_more_items" }],
+                    [{ text: "👀 Посмотреть корзину", callback_data: "view_cart" }]
                 ]
             }
         };
@@ -115,7 +137,7 @@ class Keyboards {
         };
     }
 
-    // НОВАЯ клавиатура для отображения реквизитов карты
+    // Клавиатура для отображения реквизитов карты
     static getCardPaymentKeyboard() {
         return {
             reply_markup: {
@@ -130,7 +152,7 @@ class Keyboards {
         };
     }
 
-    // НОВАЯ клавиатура для оплаты наличными
+    // Клавиатура для оплаты наличными
     static getCashPaymentKeyboard() {
         return {
             reply_markup: {
@@ -145,7 +167,7 @@ class Keyboards {
         };
     }
 
-    // НОВАЯ клавиатура для обработки платежа
+    // Клавиатура для обработки платежа
     static getPaymentProcessingKeyboard() {
         return {
             reply_markup: {
@@ -157,7 +179,7 @@ class Keyboards {
         };
     }
 
-    // НОВАЯ клавиатура после завершения заказа
+    // Клавиатура после завершения заказа
     static getOrderCompleteKeyboard() {
         return {
             reply_markup: {
