@@ -97,7 +97,7 @@ class ClientHandler {
             await this.editOrSendMessage(chatId, messageId, "🗑️ Корзина очищена!", Keyboards.getStartKeyboard());
         }
         try {
-           else if (data === 'contact_operator') {
+            if (data === 'contact_operator') {
                 await this.showOperators(chatId, messageId);
 
             } else if (data.startsWith('category_')) {
