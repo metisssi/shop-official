@@ -7,11 +7,11 @@ class ClientHandler {
         this.bot = bot;
         this.db = database;
         this.userSessions = new Map();
-        
+
         // Реквизиты для оплаты картой (замените на реальные)
         this.paymentDetails = {
             cardNumber: "4111 1111 1111 1111",
-            cardHolder: "IVAN PETROV", 
+            cardHolder: "IVAN PETROV",
             bank: "Česká spořitelna",
             message: "Оплата заказа недвижимости"
         };
@@ -84,6 +84,26 @@ class ClientHandler {
             return;
         }
 
+        // Убираем ELSE! Делаем отдельными условиями:
+        if (data === 'work_with_bot') {
+            await this.showCategories(chatId, messageId);
+
+        } else if (data === 'contact_operator') {
+            await this.showOperators(chatId, messageId);
+
+        } else if (data === 'view_cart') {
+            await this.showCart(chatId, messageId);
+
+        } else if (data === 'request_address') {
+            await this.requestDeliveryAddress(chatId, messageId);
+
+        } else if (data === 'address_entered') {
+            await this.showPaymentOptions(chatId, messageId);
+
+        } else if (data === 'clear_cart') {
+            session.cart = [];
+            await this.editOrSendMessage(chatId, messageId, "🗑️ Корзина очищена!", Keyboards.getStartKeyboard());
+        }
         try {
             if (data === 'work_with_bot') {
                 await this.showCategories(chatId, messageId);
@@ -115,7 +135,7 @@ class ClientHandler {
                 const propertyId = parts[1];
                 const quantity = parts[2];
                 console.log('📦 Выбор количества:', { propertyId, quantity });
-                
+
                 if (propertyId && propertyId.length === 24) {
                     if (quantity === 'custom') {
                         await this.requestCustomQuantity(chatId, messageId, propertyId);
@@ -165,7 +185,7 @@ class ClientHandler {
                 session.state = 'choosing_action';
                 const welcomeText = `👋 Добро пожаловать в бот по продаже недвижимости!\n\n🏠 У нас представлены лучшие объекты недвижимости\n💼 Профессиональные консультации\n🚀 Быстрое оформление сделок\n\nВыберите, как хотите продолжить:`;
                 await this.editOrSendMessage(chatId, messageId, welcomeText, Keyboards.getStartKeyboard());
-                
+
             } else if (data === 'current_page') {
                 // Игнорируем нажатие на индикатор текущей страницы
                 return;
@@ -181,7 +201,7 @@ class ClientHandler {
     // Универсальный метод для редактирования или отправки сообщения
     async editOrSendMessage(chatId, messageId, text, keyboard, parseMode = null) {
         const session = this.getUserSession(chatId);
-        
+
         try {
             if (session.lastMessageType === 'text') {
                 // Пытаемся отредактировать текстовое сообщение
@@ -191,13 +211,13 @@ class ClientHandler {
                     ...keyboard
                 };
                 if (parseMode) options.parse_mode = parseMode;
-                
+
                 await this.bot.editMessageText(text, options);
             } else {
                 // Отправляем новое сообщение, если предыдущее было с фото
                 const options = { ...keyboard };
                 if (parseMode) options.parse_mode = parseMode;
-                
+
                 const newMessage = await this.bot.sendMessage(chatId, text, options);
                 session.lastMessageId = newMessage.message_id;
                 session.lastMessageType = 'text';
@@ -207,7 +227,7 @@ class ClientHandler {
             // Если редактирование не удалось, отправляем новое сообщение
             const options = { ...keyboard };
             if (parseMode) options.parse_mode = parseMode;
-            
+
             const newMessage = await this.bot.sendMessage(chatId, text, options);
             session.lastMessageId = newMessage.message_id;
             session.lastMessageType = 'text';
@@ -223,7 +243,7 @@ class ClientHandler {
             const text = "🏠 Выберите категорию недвижимости:";
             const hasItemsInCart = session.cart.length > 0;
             const keyboard = Keyboards.getCategoriesKeyboard(categories, hasItemsInCart);
-            
+
             await this.editOrSendMessage(chatId, messageId, text, keyboard);
         } catch (error) {
             console.error('Ошибка при показе категорий:', error);
@@ -286,17 +306,17 @@ class ClientHandler {
             // Если есть главная фотография, отправляем её с описанием
             if (property.photos && property.photos.length > 0) {
                 const mainPhoto = property.photos.find(photo => photo.isMain) || property.photos[0];
-                
+
                 try {
                     const photoMessage = await this.bot.sendPhoto(chatId, mainPhoto.fileId, {
                         caption: text,
                         parse_mode: 'Markdown',
                         ...keyboard
                     });
-                    
+
                     session.lastMessageType = 'photo';
                     session.lastMessageId = photoMessage.message_id;
-                    
+
                     // Пытаемся удалить предыдущее сообщение
                     try {
                         await this.bot.deleteMessage(chatId, messageId);
@@ -337,7 +357,7 @@ class ClientHandler {
 
             // ИСПРАВЛЕНО: всегда отправляем новое сообщение для выбора количества
             await this.editOrSendMessage(chatId, messageId, text, keyboard);
-            
+
         } catch (error) {
             console.error('Ошибка при показе выбора количества:', error);
             await this.bot.sendMessage(chatId, '❌ Ошибка при загрузке товара');
@@ -409,14 +429,27 @@ class ClientHandler {
                 text += `   📦 Количество: ${item.quantity}\n`;
                 text += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
                 text += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
-                
+
                 totalAmount += item.total;
             });
 
             text += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n\n`;
-            text += `*Выберите способ оплаты:*`;
+            text += `📍 *Для оформления заказа необходимо указать адрес доставки*`;
 
-            await this.editOrSendMessage(chatId, messageId, text, Keyboards.getCartKeyboard(), 'Markdown');
+            // Кнопка для ввода адреса
+            const keyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "📍 Указать адрес доставки", callback_data: "request_address" }],
+                        [
+                            { text: "➕ Добавить еще", callback_data: "choose_more_items" },
+                            { text: "🗑️ Очистить корзину", callback_data: "clear_cart" }
+                        ]
+                    ]
+                }
+            };
+
+            await this.editOrSendMessage(chatId, messageId, text, keyboard, 'Markdown');
         } catch (error) {
             console.error('Ошибка при показе корзины:', error);
         }
@@ -428,15 +461,24 @@ class ClientHandler {
             const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
 
             const text = `💳 *Оплата на карту*\n\n` +
-                        `💰 *К оплате:* ${totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
-                        `*Реквизиты для перевода:*\n` +
-                        `🏦 Банк: ${this.paymentDetails.bank}\n` +
-                        `💳 Номер карты: \`${this.paymentDetails.cardNumber}\`\n` +
-                        `👤 Получатель: ${this.paymentDetails.cardHolder}\n` +
-                        `📝 Назначение: ${this.paymentDetails.message}\n\n` +
-                        `*После перевода нажмите кнопку "Перевёл"*`;
+                `💰 *К оплате:* ${totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
+                `*Реквизиты для перевода:*\n` +
+                `🏦 Банк: ${this.paymentDetails.bank}\n` +
+                `💳 Номер карты: \`${this.paymentDetails.cardNumber}\`\n` +
+                `👤 Получатель: ${this.paymentDetails.cardHolder}\n` +
+                `📝 Назначение: ${this.paymentDetails.message}\n\n` +
+                `*После перевода нажмите кнопку "Подтвердить оплату"*`;
 
-            await this.editOrSendMessage(chatId, messageId, text, Keyboards.getCardPaymentKeyboard(), 'Markdown');
+            const keyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "✅ Подтвердить оплату", callback_data: "confirm_card_payment" }],
+                        [{ text: "🔄 Назад к способам оплаты", callback_data: "address_entered" }]
+                    ]
+                }
+            };
+
+            await this.editOrSendMessage(chatId, messageId, text, keyboard, 'Markdown');
         } catch (error) {
             console.error('Ошибка при показе реквизитов:', error);
         }
@@ -447,15 +489,24 @@ class ClientHandler {
             const session = this.getUserSession(chatId);
             const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
 
-            const text = `💵 *Оплата наличными при встрече*\n\n` +
-                        `💰 *К оплате:* ${totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
-                        `📞 *С вами свяжется наш менеджер и уточнит:*\n` +
-                        `• Удобное время встречи\n` +
-                        `• Место встречи\n` +
-                        `• Детали сделки\n\n` +
-                        `*Подтвердите заказ:*`;
+            const text = `💵 *Оплата при встрече*\n\n` +
+                `💰 *К оплате:* ${totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
+                `📞 *С вами свяжется курьер и уточнит:*\n` +
+                `• Удобное время встречи\n` +
+                `• Детали доставки\n` +
+                `• Способ оплаты\n\n` +
+                `*Подтвердите заказ:*`;
 
-            await this.editOrSendMessage(chatId, messageId, text, Keyboards.getCashPaymentKeyboard(), 'Markdown');
+            const keyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "✅ Подтвердить заказ", callback_data: "confirm_cash_payment" }],
+                        [{ text: "🔄 Назад к способам оплаты", callback_data: "address_entered" }]
+                    ]
+                }
+            };
+
+            await this.editOrSendMessage(chatId, messageId, text, keyboard, 'Markdown');
         } catch (error) {
             console.error('Ошибка при показе информации о наличной оплате:', error);
         }
@@ -463,14 +514,15 @@ class ClientHandler {
 
     async processCardPayment(chatId, messageId) {
         try {
-            const text = `⏳ *Проверяем ваш платёж...*\n\n` +
-                        `После подтверждения поступления средств заказ будет обработан.\n\n` +
-                        `💬 *С вами скоро свяжется наш менеджер для уточнения деталей.*`;
-
-            await this.editOrSendMessage(chatId, messageId, text, Keyboards.getPaymentProcessingKeyboard(), 'Markdown');
-
             // Создаем заказ со статусом "ожидает подтверждения оплаты"
             await this.createOrderInDatabase(chatId, 'card', 'pending_payment');
+
+            const text = `✅ *Ваш заказ успешно оформлен. Ожидайте подтверждения и доставки!*\n\n` +
+                `📞 *С вами скоро свяжется наш менеджер* для уточнения деталей доставки.\n\n` +
+                `🕐 Обычно это происходит в течение 30 минут.\n\n` +
+                `Спасибо за ваш заказ!`;
+
+            await this.editOrSendMessage(chatId, messageId, text, Keyboards.getOrderCompleteKeyboard(), 'Markdown');
         } catch (error) {
             console.error('Ошибка при обработке оплаты картой:', error);
         }
@@ -480,10 +532,13 @@ class ClientHandler {
         try {
             await this.createOrderInDatabase(chatId, 'cash', 'confirmed');
 
-            const text = `✅ *Заказ принят!*\n\n` +
-                        `📞 *С вами скоро свяжется наш менеджер* для уточнения деталей встречи и оплаты наличными.\n\n` +
-                        `🕐 Обычно это происходит в течение 30 минут.\n\n` +
-                        `Спасибо за ваш заказ!`;
+            const text = `✅ *Ваш заказ принят. С вами скоро свяжется курьер для уточнения деталей.*\n\n` +
+                `📞 *Курьер уточнит:*\n` +
+                `• Удобное время встречи\n` +
+                `• Детали доставки\n` +
+                `• Способ оплаты\n\n` +
+                `🕐 Обычно это происходит в течение 30 минут.\n\n` +
+                `Спасибо за ваш заказ!`;
 
             await this.editOrSendMessage(chatId, messageId, text, Keyboards.getOrderCompleteKeyboard(), 'Markdown');
         } catch (error) {
@@ -494,15 +549,15 @@ class ClientHandler {
     async completeOrder(chatId, messageId) {
         try {
             const session = this.getUserSession(chatId);
-            
+
             // Очищаем корзину
             session.cart = [];
             session.state = 'start';
 
             const text = `✅ *Спасибо за подтверждение!*\n\n` +
-                        `📞 *С вами скоро свяжется наш менеджер* для уточнения деталей.\n\n` +
-                        `🕐 Обычно это происходит в течение 30 минут.\n\n` +
-                        `Хотите что-то ещё?`;
+                `📞 *С вами скоро свяжется наш менеджер* для уточнения деталей.\n\n` +
+                `🕐 Обычно это происходит в течение 30 минут.\n\n` +
+                `Хотите что-то ещё?`;
 
             await this.editOrSendMessage(chatId, messageId, text, Keyboards.getOrderCompleteKeyboard(), 'Markdown');
         } catch (error) {
@@ -519,6 +574,10 @@ class ClientHandler {
                 throw new Error('Корзина пуста');
             }
 
+            if (!session.deliveryAddress) {
+                throw new Error('Адрес доставки не указан');
+            }
+
             const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
 
             // Создаем заказ в базе данных
@@ -528,40 +587,62 @@ class ClientHandler {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 phone: user.phone,
+                deliveryAddress: session.deliveryAddress,
                 items: session.cart,
                 totalAmount: totalAmount,
                 paymentMethod: paymentMethod,
                 status: status
             });
 
-            // Формируем текст заказа для операторов
-            let orderText = `📋 Новый заказ #${order._id}\n\n`;
-            orderText += `👤 От: ${user.firstName || 'Пользователь'}`;
+            // Формируем текст заказа для @metisuk
+            let orderText = `🔔 *НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}*\n\n`;
+
+            // Информация о клиенте
+            orderText += `👤 *Клиент:* ${user.firstName || 'Пользователь'}`;
             if (user.lastName) orderText += ` ${user.lastName}`;
             orderText += `\n`;
             if (user.username) orderText += `📱 @${user.username}\n`;
             orderText += `🆔 ID: ${chatId}\n\n`;
 
+            // Адрес доставки
+            orderText += `📍 *Адрес доставки:*\n${session.deliveryAddress}\n\n`;
+
+            // Товары
+            orderText += `🛒 *Товары:*\n`;
             session.cart.forEach((item, index) => {
-                orderText += `${index + 1}. ${item.name}\n`;
+                orderText += `${index + 1}. *${item.name}*\n`;
                 orderText += `   📦 Количество: ${item.quantity}\n`;
-                orderText += `   💰 Цена за единицу: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                orderText += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
                 orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
             });
 
-            orderText += `💳 Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč\n`;
-            orderText += `💳 Способ оплаты: ${paymentMethod === 'card' ? 'Карта' : 'Наличные'}\n`;
-            orderText += `📅 Дата заказа: ${new Date().toLocaleString('ru-RU')}\n`;
-            orderText += `\n🔔 Свяжитесь с клиентом для уточнения деталей!`;
+            // Итого
+            orderText += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
+            orderText += `💰 *Способ оплаты:* ${paymentMethod === 'card' ? '💳 Карта' : '💵 Наличные'}\n`;
+            orderText += `📅 *Дата заказа:* ${new Date().toLocaleString('ru-RU')}\n\n`;
 
-            // Отправляем заказ операторам
-            for (const operatorId of Object.values(config.OPERATORS)) {
-                try {
-                    await this.bot.sendMessage(operatorId, orderText);
-                } catch (error) {
-                    console.error(`Не удалось отправить заказ оператору ${operatorId}:`, error);
+            orderText += `🔔 *Обработайте заказ и свяжитесь с клиентом!*`;
+
+            // Отправляем заказ на @metisuk
+            try {
+                await this.bot.sendMessage('@metisuk', orderText, { parse_mode: 'Markdown' });
+                console.log('✅ Заказ отправлен на @metisuk');
+            } catch (error) {
+                console.error('❌ Не удалось отправить заказ на @metisuk:', error);
+                // В качестве запасного варианта отправляем операторам из конфига
+                for (const operatorId of Object.values(config.OPERATORS)) {
+                    try {
+                        await this.bot.sendMessage(operatorId, orderText, { parse_mode: 'Markdown' });
+                    } catch (error) {
+                        console.error(`Не удалось отправить заказ оператору ${operatorId}:`, error);
+                    }
                 }
             }
+
+            // Очищаем корзину и адрес
+            session.cart = [];
+            session.deliveryAddress = null;
+            session.state = 'start';
 
             return order;
 
@@ -570,7 +651,6 @@ class ClientHandler {
             throw error;
         }
     }
-
     async requestCustomQuantity(chatId, messageId, propertyId) {
         try {
             const property = await this.db.getPropertyById(propertyId);
@@ -630,12 +710,33 @@ class ClientHandler {
 
             // Добавляем в корзину - отправляем новое сообщение
             const loadingMessage = await this.bot.sendMessage(chatId, '🔄 Добавляем в корзину...');
-            
+
             await this.addToCart(chatId, loadingMessage.message_id, session.currentProperty, quantity);
             session.state = 'browsing_properties';
         }
-    }
+        else if (session.state === 'waiting_address') {
+            // Обработка ввода адреса
+            if (!msg.text || msg.text.trim().length < 10) {
+                await this.bot.sendMessage(chatId, "❌ Пожалуйста, введите полный адрес (минимум 10 символов)");
+                return;
+            }
 
+            // Сохраняем адрес в сессии
+            session.deliveryAddress = msg.text.trim();
+            session.state = 'address_entered';
+
+            // Удаляем сообщение пользователя
+            try {
+                await this.bot.deleteMessage(chatId, msg.message_id);
+            } catch (error) {
+                // Игнорируем ошибку удаления сообщения
+            }
+
+            // Показываем варианты оплаты
+            const confirmMessage = await this.bot.sendMessage(chatId, '✅ Адрес сохранен. Выбираем способ оплаты...');
+            await this.showPaymentOptions(chatId, confirmMessage.message_id);
+        }
+    }
     async showUserStats(chatId, messageId) {
         try {
             const user = await this.db.getUserById(chatId);
@@ -648,7 +749,7 @@ class ClientHandler {
             if (user.username) text += `📱 Username: @${user.username}\n`;
             text += `📅 Регистрация: ${user.createdAt.toLocaleDateString('ru-RU')}\n`;
             text += `🛒 Всего заказов: ${user.totalOrders}\n`;
-            
+
             // Показываем сумму в кронах
             const totalSpentCZK = Math.round(user.totalSpent * 0.4); // Конвертируем из рублей
             text += `💰 Потрачено: ${totalSpentCZK.toLocaleString('cs-CZ')} Kč\n`;
@@ -686,6 +787,54 @@ class ClientHandler {
             console.error('Ошибка при показе операторов:', error);
             // Fallback на стартовое меню в случае ошибки
             await this.editOrSendMessage(chatId, messageId, "❌ Ошибка при загрузке списка операторов. Попробуйте позже.", Keyboards.getStartKeyboard());
+        }
+    }
+
+    // Запрос адреса доставки
+    async requestDeliveryAddress(chatId, messageId) {
+        try {
+            const session = this.getUserSession(chatId);
+            session.state = 'waiting_address';
+
+            const text = `📍 *Укажите адрес доставки*\n\nВведите полный адрес для доставки заказа:`;
+
+            const keyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "🔄 Назад к корзине", callback_data: "view_cart" }]
+                    ]
+                }
+            };
+
+            await this.editOrSendMessage(chatId, messageId, text, keyboard, 'Markdown');
+        } catch (error) {
+            console.error('Ошибка при запросе адреса:', error);
+        }
+    }
+    А
+    // Показ вариантов оплаты после ввода адреса
+    async showPaymentOptions(chatId, messageId) {
+        try {
+            const session = this.getUserSession(chatId);
+            const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
+
+            const text = `✅ *Адрес доставки сохранен*\n\n` +
+                `💳 *К оплате: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n\n` +
+                `*Выберите способ оплаты:*`;
+
+            const keyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "💵 Оплата при встрече", callback_data: "payment_cash" }],
+                        [{ text: "💳 Оплата на карту", callback_data: "payment_card" }],
+                        [{ text: "🔄 Изменить адрес", callback_data: "request_address" }]
+                    ]
+                }
+            };
+
+            await this.editOrSendMessage(chatId, messageId, text, keyboard, 'Markdown');
+        } catch (error) {
+            console.error('Ошибка при показе вариантов оплаты:', error);
         }
     }
 }
