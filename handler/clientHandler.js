@@ -32,22 +32,24 @@ class ClientHandler {
     }
 
     async handleStart(msg) {
-    const chatId = msg.chat.id;
-    const session = this.getUserSession(chatId);
-    session.state = 'browsing_categories';  // ИЗМЕНЕНО: сразу в режим просмотра категорий
-    session.lastMessageType = 'text';
+        const chatId = msg.chat.id;
+        const session = this.getUserSession(chatId);
+        session.state = 'choosing_action';  // ИЗМЕНЕНО: возвращаем выбор действия
+        session.lastMessageType = 'text';
 
-    // Создаем или обновляем пользователя
-    await this.db.createOrUpdateUser({
-        userId: chatId,
-        username: msg.from.username,
-        firstName: msg.from.first_name,
-        lastName: msg.from.last_name
-    });
+        // Создаем или обновляем пользователя
+        await this.db.createOrUpdateUser({
+            userId: chatId,
+            username: msg.from.username,
+            firstName: msg.from.first_name,
+            lastName: msg.from.last_name
+        });
 
-    // ИСПРАВЛЕНО: Сразу показываем категории без приветственного меню
-    await this.showCategories(chatId, null);
-}
+        // ИСПРАВЛЕНО: Показываем приветственное меню вместо категорий
+        const welcomeText = `👋 Добро пожаловать в бот по продаже недвижимости!\n\n🏠 У нас представлены лучшие объекты недвижимости\n💼 Профессиональные консультации\n🚀 Быстрое оформление сделок\n\nВыберите, как хотите продолжить:`;
+
+        await this.bot.sendMessage(chatId, welcomeText, Keyboards.getStartKeyboard());
+    }
 
     async handleCallback(callbackQuery) {
         const chatId = callbackQuery.message.chat.id;
@@ -371,7 +373,6 @@ class ClientHandler {
             }
 
             const totalPrice = priceInCZK * quantity;
-            const priceDisplay = `${totalPrice.toLocaleString('cs-CZ')} Kč`;
 
             // Проверяем, есть ли уже такой товар в корзине
             const existingItem = session.cart.find(item => item.propertyId.toString() === propertyId);
@@ -392,7 +393,23 @@ class ClientHandler {
                 console.log('➕ Добавлен новый товар в корзину');
             }
 
-            const text = `✅ *Товар добавлен в корзину!*\n\n🏠 *${property.name}*\n📦 Количество: ${quantity}\n💰 Сумма: ${priceDisplay}\n\n🛒 *В корзине:* ${session.cart.length} поз.\n\n*Что дальше?*`;
+            // ИСПРАВЛЕНО: Показываем всю корзину вместо информации только о добавленном товаре
+            let text = `✅ *Товар добавлен в корзину!*\n\n`;
+
+            // Показываем всю корзину
+            text += `🛒 *Ваша корзина:*\n\n`;
+            let totalCartAmount = 0;
+
+            session.cart.forEach((item, index) => {
+                text += `${index + 1}. *${item.name}*\n`;
+                text += `   📦 Количество: ${item.quantity}\n`;
+                text += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                text += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
+                totalCartAmount += item.total;
+            });
+
+            text += `💳 *Общая сумма: ${totalCartAmount.toLocaleString('cs-CZ')} Kč*\n\n`;
+            text += `*Что дальше?*`;
 
             await this.editOrSendMessage(chatId, messageId, text, Keyboards.getAfterAddToCartKeyboard(), 'Markdown');
         } catch (error) {
@@ -616,12 +633,24 @@ class ClientHandler {
             try {
                 await this.bot.sendMessage('@metisuk', orderText, { parse_mode: 'Markdown' });
                 console.log('✅ Заказ отправлен на @metisuk');
+
+                // Отправляем дополнительное сообщение оператору
+                await this.bot.sendMessage('@metisuk',
+                    `📞 *Свяжитесь с клиентом для уточнения деталей заказа*\n\n👤 Клиент: ${user.firstName || 'Пользователь'}\n🆔 ID: ${chatId}`,
+                    { parse_mode: 'Markdown' }
+                );
+
             } catch (error) {
                 console.error('❌ Не удалось отправить заказ на @metisuk:', error);
                 // В качестве запасного варианта отправляем операторам из конфига
                 for (const operatorId of Object.values(config.OPERATORS)) {
                     try {
                         await this.bot.sendMessage(operatorId, orderText, { parse_mode: 'Markdown' });
+                        // И дополнительное сообщение для связи
+                        await this.bot.sendMessage(operatorId,
+                            `📞 *Свяжитесь с клиентом для уточнения деталей заказа*\n\n👤 Клиент: ${user.firstName || 'Пользователь'}\n🆔 ID: ${chatId}`,
+                            { parse_mode: 'Markdown' }
+                        );
                     } catch (error) {
                         console.error(`Не удалось отправить заказ оператору ${operatorId}:`, error);
                     }
