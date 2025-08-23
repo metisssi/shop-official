@@ -32,30 +32,22 @@ class ClientHandler {
     }
 
     async handleStart(msg) {
-        const chatId = msg.chat.id;
-        const session = this.getUserSession(chatId);
-        session.state = 'choosing_action';
-        session.lastMessageType = 'text';
+    const chatId = msg.chat.id;
+    const session = this.getUserSession(chatId);
+    session.state = 'browsing_categories';  // ИЗМЕНЕНО: сразу в режим просмотра категорий
+    session.lastMessageType = 'text';
 
-        // Создаем или обновляем пользователя
-        await this.db.createOrUpdateUser({
-            userId: chatId,
-            username: msg.from.username,
-            firstName: msg.from.first_name,
-            lastName: msg.from.last_name
-        });
+    // Создаем или обновляем пользователя
+    await this.db.createOrUpdateUser({
+        userId: chatId,
+        username: msg.from.username,
+        firstName: msg.from.first_name,
+        lastName: msg.from.last_name
+    });
 
-        const welcomeText = `👋 Добро пожаловать в бот по продаже недвижимости!
-
-🏠 У нас представлены лучшие объекты недвижимости
-💼 Профессиональные консультации
-🚀 Быстрое оформление сделок
-
-Выберите, как хотите продолжить:`;
-
-        const sentMessage = await this.bot.sendMessage(chatId, welcomeText, Keyboards.getStartKeyboard());
-        session.lastMessageId = sentMessage.message_id;
-    }
+    // ИСПРАВЛЕНО: Сразу показываем категории без приветственного меню
+    await this.showCategories(chatId, null);
+}
 
     async handleCallback(callbackQuery) {
         const chatId = callbackQuery.message.chat.id;
@@ -105,10 +97,7 @@ class ClientHandler {
             await this.editOrSendMessage(chatId, messageId, "🗑️ Корзина очищена!", Keyboards.getStartKeyboard());
         }
         try {
-            if (data === 'work_with_bot') {
-                await this.showCategories(chatId, messageId);
-
-            } else if (data === 'contact_operator') {
+           else if (data === 'contact_operator') {
                 await this.showOperators(chatId, messageId);
 
             } else if (data.startsWith('category_')) {
