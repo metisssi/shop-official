@@ -1,4 +1,4 @@
-// keyboards.js - Улучшенные клавиатуры с возможностью просмотра корзины
+// keyboards.js - Обновлённые клавиатуры согласно новому ТЗ
 const config = require('./config/config');
 
 class Keyboards {
@@ -109,7 +109,7 @@ class Keyboards {
         };
     }
 
-    // Клавиатура после добавления товара в корзину (согласно сценарию)
+    // Клавиатура после добавления товара в корзину
     static getAfterAddToCartKeyboard() {
         return {
             reply_markup: {
@@ -122,12 +122,13 @@ class Keyboards {
         };
     }
 
+    // Клавиатура корзины с выбором способа оплаты
     static getCartKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "💳 Оплата на карту", callback_data: "payment_card" }],
                     [{ text: "💵 Оплата наличными при встрече", callback_data: "payment_cash" }],
+                    [{ text: "💳 Оплата на карту", callback_data: "payment_card" }],
                     [
                         { text: "➕ Добавить еще", callback_data: "choose_more_items" },
                         { text: "🗑️ Очистить корзину", callback_data: "clear_cart" }
@@ -137,56 +138,37 @@ class Keyboards {
         };
     }
 
-    // Клавиатура для отображения реквизитов карты
-    static getCardPaymentKeyboard() {
+    // ОБНОВЛЁННАЯ клавиатура для подтверждения заказа (только 2 кнопки)
+    static getOrderConfirmationKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "✅ Перевёл", callback_data: "confirm_card_payment" }],
-                    [
-                        { text: "◀️ Назад к корзине", callback_data: "view_cart" },
-                        { text: "❌ Отменить", callback_data: "back_to_start" }
-                    ]
+                    [{ text: "✅ Подтверждаю заказ", callback_data: "confirm_order" }],
+                    [{ text: "🔄 Назад к корзине", callback_data: "back_to_cart" }]
                 ]
             }
         };
     }
 
-    // Клавиатура для оплаты наличными
-    static getCashPaymentKeyboard() {
-        return {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "✅ Подтверждаю заказ", callback_data: "confirm_cash_payment" }],
-                    [
-                        { text: "◀️ Назад к корзине", callback_data: "view_cart" },
-                        { text: "❌ Отменить", callback_data: "back_to_start" }
-                    ]
-                ]
-            }
-        };
-    }
-
-    // Клавиатура для обработки платежа
-    static getPaymentProcessingKeyboard() {
-        return {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "✅ Платёж прошёл", callback_data: "payment_completed" }],
-                    [{ text: "🏠 В главное меню", callback_data: "back_to_start" }]
-                ]
-            }
-        };
-    }
-
-    // Клавиатура после завершения заказа
-    static getOrderCompleteKeyboard() {
+    // Клавиатура после успешного оформления заказа
+    static getOrderSuccessKeyboard() {
         return {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: "🏠 Посмотреть ещё товары", callback_data: "work_with_bot" }],
                     [{ text: "📞 Связаться с оператором", callback_data: "contact_operator" }],
                     [{ text: "🏠 В главное меню", callback_data: "back_to_start" }]
+                ]
+            }
+        };
+    }
+
+    // Клавиатура для запроса адреса (без кнопок - только текстовый ввод)
+    static getAddressInputKeyboard() {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "🔄 Назад к корзине", callback_data: "back_to_cart" }]
                 ]
             }
         };
@@ -244,6 +226,41 @@ class Keyboards {
                 }
             };
         }
+    }
+
+    // === АДМИНСКИЕ КЛАВИАТУРЫ ===
+
+    // Клавиатура для управления администраторами
+    static getAdminManagementKeyboard() {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '➕ Добавить админа', callback_data: 'admin_add_admin' },
+                        { text: '📋 Список админов', callback_data: 'admin_list_admins' }
+                    ],
+                    [{ text: '⬅️ Назад в админ меню', callback_data: 'admin_menu' }]
+                ]
+            }
+        };
+    }
+
+    // Клавиатура для редактирования администратора
+    static getEditAdminKeyboard(adminId) {
+        return {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '✏️ Изменить имя', callback_data: `admin_edit_admin_name_${adminId}` },
+                        { text: '📱 Изменить ID', callback_data: `admin_edit_admin_id_${adminId}` }
+                    ],
+                    [
+                        { text: '❌ Удалить админа', callback_data: `admin_delete_admin_${adminId}` }
+                    ],
+                    [{ text: '⬅️ Назад к списку', callback_data: 'admin_list_admins' }]
+                ]
+            }
+        };
     }
 }
 
