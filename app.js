@@ -234,6 +234,11 @@ class RealEstateBot {
                     await this.handleEditOperatorUsername(chatId, userId, text, session.data.operatorId);
                     break;
 
+                // ДОБАВЬТЕ ЭТУ СТРОКУ ЗДЕСЬ (прямо перед default:):
+                case 'adding_admin_id':
+                    await this.handleAdminIdInput(chatId, userId, text);
+                    break;
+
                 default:
                     console.log('Неизвестный тип сессии:', session.type);
                     this.adminUtils.clearSession(userId);
@@ -577,6 +582,56 @@ class RealEstateBot {
             console.error('Edit operator username error:', error);
             this.adminUtils.clearSession(userId);
             this.bot.sendMessage(chatId, '❌ Ошибка при обновлении username оператора.');
+        }
+    }
+
+    async handleAdminIdInput(chatId, userId, text) {
+        const adminId = parseInt(text.trim());
+
+        if (isNaN(adminId) || adminId <= 0) {
+            return this.bot.sendMessage(chatId, '❌ Неверный формат ID. Введите корректный Telegram ID (только цифры):');
+        }
+
+        if (adminId === userId) {
+            return this.bot.sendMessage(chatId, '❌ Вы не можете добавить себя в качестве админа (вы уже админ).');
+        }
+
+        try {
+            const adminConfig = require('./config/adminConfig');
+            const result = adminConfig.addAdmin(adminId, userId);
+
+            this.adminUtils.clearSession(userId);
+
+            if (result.success) {
+                this.bot.sendMessage(chatId, `✅ ${result.message}\n\n🆔 Новый админ: \`${adminId}\``, {
+                    parse_mode: 'Markdown'
+                });
+
+                // Уведомляем нового админа
+                try {
+                    await this.bot.sendMessage(adminId,
+                        '🎉 *Поздравляем!*\n\nВы назначены администратором бота!\n\n' +
+                        'Теперь вы можете использовать команду /admin для доступа к панели управления.\n\n' +
+                        '👑 *Ваши возможности:*\n' +
+                        '• Управление категориями\n' +
+                        '• Управление товарами\n' +
+                        '• Управление операторами\n' +
+                        '• Просмотр заказов\n' +
+                        '• Просмотр статистики',
+                        { parse_mode: 'Markdown' }
+                    );
+                } catch (error) {
+                    console.log('Не удалось уведомить нового админа:', error.message);
+                }
+
+                setTimeout(() => this.adminHandler.showAdminMenu(chatId), 2000);
+            } else {
+                this.bot.sendMessage(chatId, `❌ Ошибка: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('Add admin error:', error);
+            this.adminUtils.clearSession(userId);
+            this.bot.sendMessage(chatId, '❌ Произошла ошибка при добавлении админа.');
         }
     }
 

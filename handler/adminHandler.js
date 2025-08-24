@@ -43,28 +43,28 @@ class AdminHandler {
 
         try {
             console.log('Получена фотография от пользователя:', userId);
-            
+
             const session = global.adminUtils?.getSession(userId);
             console.log('Текущая сессия:', session);
-            
+
             if (!session || session.type !== 'uploading_product_photo') {
                 console.log('Сессия не найдена или неверный тип');
-                return this.bot.sendMessage(chatId, 
+                return this.bot.sendMessage(chatId,
                     '❌ Сначала выберите товар для добавления фотографии через команду /admin');
             }
 
             const { productId } = session.data;
             console.log('ID товара из сессии:', productId);
-            
+
             const product = await Property.findById(productId);
-            
+
             if (!product) {
                 global.adminUtils.clearSession(userId);
                 return this.bot.sendMessage(chatId, '❌ Товар не найден');
             }
 
             const photo = msg.photo[msg.photo.length - 1];
-            
+
             const photoData = {
                 fileId: photo.file_id,
                 fileName: `photo_${Date.now()}.jpg`,
@@ -81,7 +81,7 @@ class AdminHandler {
             const updatedProduct = await Property.findById(productId);
             const escapedName = this.escapeMarkdown(product.name);
 
-            this.bot.sendMessage(chatId, 
+            this.bot.sendMessage(chatId,
                 `✅ Фотография добавлена к товару "${escapedName}"!\n\n📸 Всего фотографий: ${updatedProduct.photos.length}`,
                 { parse_mode: 'Markdown' }
             );
@@ -158,7 +158,16 @@ class AdminHandler {
                 case 'operator_list':
                     await this.showOperatorsList(chatId, messageId);
                     break;
-                    
+                case 'admin_admins_management':
+                    await this.showAdminsManagement(chatId, messageId);
+                    break;
+                case 'admin_add_admin':
+                    await this.startAddAdmin(chatId);
+                    break;
+                case 'admin_list_admins':
+                    await this.showAdminsList(chatId, messageId);
+                    break;
+
                 default:
                     // Обработка динамических callback'ов
                     if (data.startsWith('edit_category_')) {
@@ -219,7 +228,7 @@ class AdminHandler {
                     } else if (data.startsWith('confirm_delete_prod_')) {
                         const productId = data.replace('confirm_delete_prod_', '');
                         await this.confirmDeleteProduct(chatId, messageId, productId);
-                    } 
+                    }
                     // === ОПЕРАТОРЫ ===
                     else if (data.startsWith('edit_operator_')) {
                         const operatorId = data.replace('edit_operator_', '');
@@ -239,7 +248,12 @@ class AdminHandler {
                     } else if (data.startsWith('confirm_delete_op_')) {
                         const operatorId = data.replace('confirm_delete_op_', '');
                         await this.confirmDeleteOperator(chatId, messageId, operatorId);
-                    }
+                    } else if (data.startsWith('admin_remove_admin_')) {
+                        const adminId = data.replace('admin_remove_admin_', '');
+                        await this.confirmRemoveAdmin(chatId, messageId, adminId); 
+                    } else if (data.startsWith('admin_confirm_remove_')) {
+                        const adminId = data.replace('admin_confirm_remove_', '');
+                        await this.executeRemoveAdmin(chatId, messageId, adminId);}
                     break;
             }
         } catch (error) {
@@ -274,7 +288,7 @@ class AdminHandler {
     async showCategoriesList(chatId, messageId) {
         try {
             const categories = await Category.find().sort({ order: 1, name: 1 });
-            
+
             if (categories.length === 0) {
                 return this.bot.editMessageText('📂 *Категории*\n\n❌ Категории не найдены', {
                     chat_id: chatId,
@@ -336,8 +350,8 @@ class AdminHandler {
             const status = category.isActive ? '✅ Активна' : '❌ Неактивна';
             const escapedName = this.escapeMarkdown(category.name);
             const text = `✏️ *Редактирование категории*\n\n` +
-                        `📝 *Название:* ${escapedName}\n` +
-                        `📊 *Статус:* ${status}`;
+                `📝 *Название:* ${escapedName}\n` +
+                `📊 *Статус:* ${status}`;
 
             const keyboard = {
                 inline_keyboard: [
@@ -372,14 +386,14 @@ class AdminHandler {
 
             const propertiesCount = await Property.countDocuments({ categoryId });
             const escapedName = this.escapeMarkdown(category.name);
-            
+
             let text = `🗑 *Удаление категории*\n\n` +
-                      `📝 *Категория:* ${escapedName}\n`;
-            
+                `📝 *Категория:* ${escapedName}\n`;
+
             if (propertiesCount > 0) {
                 text += `⚠️ *В этой категории ${propertiesCount} товаров*\n\n` +
-                       `При удалении категории все товары будут также удалены!\n\n` +
-                       `Вы уверены?`;
+                    `При удалении категории все товары будут также удалены!\n\n` +
+                    `Вы уверены?`;
             } else {
                 text += `\nВы уверены, что хотите удалить эту категорию?`;
             }
@@ -414,9 +428,9 @@ class AdminHandler {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'editing_category_name', { categoryId });
         }
-        
+
         const escapedName = this.escapeMarkdown(category.name);
-        this.bot.sendMessage(chatId, 
+        this.bot.sendMessage(chatId,
             `✏️ *Редактирование названия категории*\n\nТекущее название: *${escapedName}*\n\nВведите новое название:`,
             { parse_mode: 'Markdown' }
         );
@@ -435,7 +449,7 @@ class AdminHandler {
             const status = category.isActive ? 'активирована' : 'деактивирована';
             const escapedName = this.escapeMarkdown(category.name);
             this.bot.sendMessage(chatId, `✅ Категория "${escapedName}" ${status}!`);
-            
+
             setTimeout(() => this.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Toggle category status error:', error);
@@ -458,7 +472,7 @@ class AdminHandler {
                 `✅ Категория "${escapedName}" и все связанные товары удалены!`,
                 { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }
             );
-            
+
             setTimeout(() => this.showAdminMenu(chatId), 2000);
         } catch (error) {
             console.error('Confirm delete category error:', error);
@@ -490,7 +504,7 @@ class AdminHandler {
     async selectCategoryForProduct(chatId, messageId) {
         try {
             const categories = await Category.find({ isActive: true }).sort({ order: 1, name: 1 });
-            
+
             if (categories.length === 0) {
                 return this.bot.editMessageText('❌ Нет активных категорий!\n\nСначала создайте категории.', {
                     chat_id: chatId,
@@ -507,9 +521,9 @@ class AdminHandler {
             const keyboard = [];
 
             categories.forEach(category => {
-                keyboard.push([{ 
-                    text: `📂 ${category.name}`, 
-                    callback_data: `add_product_to_${category._id}` 
+                keyboard.push([{
+                    text: `📂 ${category.name}`,
+                    callback_data: `add_product_to_${category._id}`
                 }]);
             });
 
@@ -539,7 +553,7 @@ class AdminHandler {
             }
 
             const escapedName = this.escapeMarkdown(category.name);
-            this.bot.sendMessage(chatId, 
+            this.bot.sendMessage(chatId,
                 `➕ *Добавление товара в категорию "${escapedName}"*\n\nВведите название товара:`,
                 { parse_mode: 'Markdown' }
             );
@@ -554,7 +568,7 @@ class AdminHandler {
             const products = await Property.find()
                 .populate('categoryId')
                 .sort({ order: 1, name: 1 });
-            
+
             if (products.length === 0) {
                 return this.bot.editMessageText('🏠 *Товары*\n\n❌ Товары не найдены', {
                     chat_id: chatId,
@@ -575,13 +589,13 @@ class AdminHandler {
                 const status = product.isAvailable ? '✅' : '❌';
                 const categoryName = product.categoryId ? product.categoryId.name : 'Без категории';
                 const photoIcon = product.photosCount > 0 ? `📸${product.photosCount}` : '📷';
-                
+
                 const escapedName = this.escapeMarkdown(product.name);
                 const escapedCategory = this.escapeMarkdown(categoryName);
-                
+
                 text += `${index + 1}\\. ${status} ${photoIcon} *${escapedName}*\n`;
                 text += `   📂 Категория: ${escapedCategory}\n`;
-                
+
                 if (product.priceInCZK) {
                     text += `   💰 Цена: ${product.priceInCZK.toLocaleString('cs-CZ')} Kč\n\n`;
                 } else {
@@ -619,18 +633,18 @@ class AdminHandler {
             const categoryName = product.categoryId ? product.categoryId.name : 'Без категории';
             const price = product.priceInCZK ? `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 'не указана';
             const photosInfo = product.photosCount > 0 ? `📸 ${product.photosCount} фото` : '📷 Нет фото';
-            
+
             const escapedName = this.escapeMarkdown(product.name);
             const escapedCategory = this.escapeMarkdown(categoryName);
             const escapedDescription = this.escapeMarkdown(product.description || 'Не указано');
-            
+
             const text = `✏️ *Редактирование товара*\n\n` +
-                        `📝 *Название:* ${escapedName}\n` +
-                        `📂 *Категория:* ${escapedCategory}\n` +
-                        `💰 *Цена:* ${price}\n` +
-                        `📷 *Фотографии:* ${photosInfo}\n` +
-                        `📄 *Описание:* ${escapedDescription}\n` +
-                        `📊 *Статус:* ${status}`;
+                `📝 *Название:* ${escapedName}\n` +
+                `📂 *Категория:* ${escapedCategory}\n` +
+                `💰 *Цена:* ${price}\n` +
+                `📷 *Фотографии:* ${photosInfo}\n` +
+                `📄 *Описание:* ${escapedDescription}\n` +
+                `📊 *Статус:* ${status}`;
 
             const keyboard = {
                 inline_keyboard: [
@@ -729,7 +743,7 @@ class AdminHandler {
 
             const escapedName = this.escapeMarkdown(product.name);
 
-            this.bot.sendMessage(chatId, 
+            this.bot.sendMessage(chatId,
                 `📷 *Добавление фотографии*\n\n🏠 Товар: *${escapedName}*\n\n📸 Отправьте фотографию \\(просто прикрепите изображение к сообщению\\):`,
                 { parse_mode: 'Markdown' }
             );
@@ -771,7 +785,7 @@ class AdminHandler {
             product.photos.forEach((photo, index) => {
                 const isMain = photo.isMain ? '⭐ ' : '';
                 const photoRow = [];
-                
+
                 photoRow.push({
                     text: `${isMain}📸 ${index + 1}`,
                     callback_data: `current_page`
@@ -803,7 +817,7 @@ class AdminHandler {
                     parse_mode: 'Markdown',
                     reply_markup: { inline_keyboard: keyboard }
                 });
-                
+
                 try {
                     await this.bot.deleteMessage(chatId, messageId);
                 } catch (error) {
@@ -834,7 +848,7 @@ class AdminHandler {
             await product.setMainPhoto(photoIndex);
 
             this.bot.sendMessage(chatId, '✅ Главная фотография установлена!');
-            
+
             setTimeout(() => this.viewProductPhotos(chatId, messageId, productId), 1000);
 
         } catch (error) {
@@ -853,7 +867,7 @@ class AdminHandler {
             await product.removePhoto(photoIndex);
 
             this.bot.sendMessage(chatId, '✅ Фотография удалена!');
-            
+
             setTimeout(() => this.viewProductPhotos(chatId, messageId, productId), 1000);
 
         } catch (error) {
@@ -871,9 +885,9 @@ class AdminHandler {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'editing_product_name', { productId });
         }
-        
+
         const escapedName = this.escapeMarkdown(product.name);
-        this.bot.sendMessage(chatId, 
+        this.bot.sendMessage(chatId,
             `✏️ *Редактирование названия товара*\n\nТекущее название: *${escapedName}*\n\nВведите новое название:`,
             { parse_mode: 'Markdown' }
         );
@@ -889,12 +903,12 @@ class AdminHandler {
             if (global.adminUtils) {
                 global.adminUtils.createSession(chatId, 'editing_product_description', { productId });
             }
-            
+
             const currentDesc = product.description || 'Отсутствует';
             const escapedDesc = this.escapeMarkdown(currentDesc);
             const escapedName = this.escapeMarkdown(product.name);
-            
-            this.bot.sendMessage(chatId, 
+
+            this.bot.sendMessage(chatId,
                 `📝 *Редактирование описания товара*\n\nТовар: *${escapedName}*\n\nТекущее описание: ${escapedDesc}\n\nВведите новое описание:`,
                 { parse_mode: 'Markdown' }
             );
@@ -913,12 +927,12 @@ class AdminHandler {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'editing_product_price', { productId });
         }
-        
-        const currentPrice = product.priceInCZK ? 
-            `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 
+
+        const currentPrice = product.priceInCZK ?
+            `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` :
             `${product.price.toLocaleString('ru-RU')} ₽`;
-            
-        this.bot.sendMessage(chatId, 
+
+        this.bot.sendMessage(chatId,
             `💰 *Редактирование цены товара*\n\nТекущая цена: *${currentPrice}*\n\nВведите новую цену с валютой:\n\nПримеры:\n• 5000000 (рубли)\n• 5000000 RUB\n• 2000000 CZK\n• 2000000 крон`,
             { parse_mode: 'Markdown' }
         );
@@ -937,7 +951,7 @@ class AdminHandler {
             const status = product.isAvailable ? 'активирован' : 'деактивирован';
             const escapedName = this.escapeMarkdown(product.name);
             this.bot.sendMessage(chatId, `✅ Товар "${escapedName}" ${status}!`);
-            
+
             setTimeout(() => this.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Toggle product status error:', error);
@@ -955,11 +969,11 @@ class AdminHandler {
             const price = product.priceInCZK ? `${product.priceInCZK.toLocaleString('cs-CZ')} Kč` : 'не указана';
             const photosInfo = product.photosCount > 0 ? `\n📸 *Фотографий:* ${product.photosCount}` : '';
             const escapedName = this.escapeMarkdown(product.name);
-            
+
             const text = `🗑 *Удаление товара*\n\n` +
-                        `📝 *Товар:* ${escapedName}\n` +
-                        `💰 *Цена:* ${price}${photosInfo}\n\n` +
-                        `Вы уверены, что хотите удалить этот товар?`;
+                `📝 *Товар:* ${escapedName}\n` +
+                `💰 *Цена:* ${price}${photosInfo}\n\n` +
+                `Вы уверены, что хотите удалить этот товар?`;
 
             const keyboard = {
                 inline_keyboard: [
@@ -996,7 +1010,7 @@ class AdminHandler {
                 `✅ Товар "${escapedName}" удален!`,
                 { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }
             );
-            
+
             setTimeout(() => this.showAdminMenu(chatId), 2000);
         } catch (error) {
             console.error('Confirm delete product error:', error);
@@ -1028,7 +1042,7 @@ class AdminHandler {
     async showOperatorsList(chatId, messageId) {
         try {
             const operators = await Operator.find().sort({ order: 1, name: 1 });
-            
+
             if (operators.length === 0) {
                 return this.bot.editMessageText('👥 *Операторы*\n\n❌ Операторы не найдены', {
                     chat_id: chatId,
@@ -1053,9 +1067,9 @@ class AdminHandler {
                     commercial: 'Коммерческая',
                     residential: 'Жилая'
                 };
-                
+
                 const escapedName = this.escapeMarkdown(operator.name);
-                
+
                 text += `${index + 1}\\. ${status} *${escapedName}*\n`;
                 text += `   📱 ${operator.formattedUsername}\n`;
                 text += `   🏷 ${specialization[operator.specialization]}\n\n`;
@@ -1104,14 +1118,14 @@ class AdminHandler {
                 commercial: 'Коммерческая',
                 residential: 'Жилая'
             };
-            
+
             const escapedName = this.escapeMarkdown(operator.name);
-            
+
             const text = `✏️ *Редактирование оператора*\n\n` +
-                        `👤 *Имя:* ${escapedName}\n` +
-                        `📱 *Username:* ${operator.formattedUsername}\n` +
-                        `🏷 *Специализация:* ${specialization[operator.specialization]}\n` +
-                        `📊 *Статус:* ${status}`;
+                `👤 *Имя:* ${escapedName}\n` +
+                `📱 *Username:* ${operator.formattedUsername}\n` +
+                `🏷 *Специализация:* ${specialization[operator.specialization]}\n` +
+                `📊 *Статус:* ${status}`;
 
             const keyboard = {
                 inline_keyboard: [
@@ -1150,9 +1164,9 @@ class AdminHandler {
             const escapedName = this.escapeMarkdown(operator.name);
 
             const text = `🗑 *Удаление оператора*\n\n` +
-                        `👤 *Оператор:* ${escapedName}\n` +
-                        `📱 *Username:* ${operator.formattedUsername}\n\n` +
-                        `Вы уверены, что хотите удалить этого оператора?`;
+                `👤 *Оператор:* ${escapedName}\n` +
+                `📱 *Username:* ${operator.formattedUsername}\n\n` +
+                `Вы уверены, что хотите удалить этого оператора?`;
 
             const keyboard = {
                 inline_keyboard: [
@@ -1184,9 +1198,9 @@ class AdminHandler {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'editing_operator_name', { operatorId });
         }
-        
+
         const escapedName = this.escapeMarkdown(operator.name);
-        this.bot.sendMessage(chatId, 
+        this.bot.sendMessage(chatId,
             `✏️ *Редактирование имени оператора*\n\nТекущее имя: *${escapedName}*\n\nВведите новое имя:`,
             { parse_mode: 'Markdown' }
         );
@@ -1201,8 +1215,8 @@ class AdminHandler {
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'editing_operator_username', { operatorId });
         }
-        
-        this.bot.sendMessage(chatId, 
+
+        this.bot.sendMessage(chatId,
             `📱 *Редактирование username оператора*\n\nТекущий username: *${operator.formattedUsername}*\n\nВведите новый username (без @):`,
             { parse_mode: 'Markdown' }
         );
@@ -1221,7 +1235,7 @@ class AdminHandler {
             const status = operator.isActive ? 'активирован' : 'деактивирован';
             const escapedName = this.escapeMarkdown(operator.name);
             this.bot.sendMessage(chatId, `✅ Оператор "${escapedName}" ${status}!`);
-            
+
             setTimeout(() => this.showAdminMenu(chatId), 1000);
         } catch (error) {
             console.error('Toggle operator status error:', error);
@@ -1243,11 +1257,172 @@ class AdminHandler {
                 `✅ Оператор "${escapedName}" удален!`,
                 { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown' }
             );
-            
+
             setTimeout(() => this.showAdminMenu(chatId), 2000);
         } catch (error) {
             console.error('Confirm delete operator error:', error);
             this.bot.sendMessage(chatId, '❌ Ошибка при удалении оператора');
+        }
+    }
+
+    // === УПРАВЛЕНИЕ АДМИНИСТРАТОРАМИ ===
+    async showAdminsManagement(chatId, messageId) {
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '➕ Добавить админа', callback_data: 'admin_add_admin' },
+                    { text: '📋 Список админов', callback_data: 'admin_list_admins' }
+                ],
+                [{ text: '⬅️ Назад в админ меню', callback_data: 'admin_menu' }]
+            ]
+        };
+
+        if (messageId) {
+            this.bot.editMessageText('👥 *Управление администраторами*\n\nВыберите действие:', {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            });
+        } else {
+            this.bot.sendMessage(chatId, '👥 *Управление администраторами*\n\nВыберите действие:', {
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            });
+        }
+    }
+
+    async showAdminsList(chatId, messageId) {
+        try {
+            const adminConfig = require('../config/adminConfig');
+            const adminsList = adminConfig.getAdminsList();
+
+            let text = '👥 *Список администраторов:*\n\n';
+
+            adminsList.forEach((admin, index) => {
+                const status = admin.isSuperAdmin ? '👑 Супер-админ' : '👤 Админ';
+                text += `${index + 1}\\. ${status}\n`;
+                text += `   🆔 ID: \`${admin.id}\`\n\n`;
+            });
+
+            const keyboard = {
+                inline_keyboard: []
+            };
+
+            // Добавляем кнопки удаления только для обычных админов
+            adminsList.forEach(admin => {
+                if (!admin.isSuperAdmin) {
+                    keyboard.inline_keyboard.push([{
+                        text: `🗑 Удалить ${admin.id}`,
+                        callback_data: `admin_remove_admin_${admin.id}`
+                    }]);
+                }
+            });
+
+            keyboard.inline_keyboard.push([
+                { text: '⬅️ Назад', callback_data: 'admin_admins_management' }
+            ]);
+
+            this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            });
+        } catch (error) {
+            console.error('Show admins list error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при загрузке списка админов');
+        }
+    }
+
+    async startAddAdmin(chatId) {
+        if (global.adminUtils) {
+            global.adminUtils.createSession(chatId, 'adding_admin_id', {});
+        }
+
+        this.bot.sendMessage(chatId, '➕ *Добавление нового администратора*\n\nВведите Telegram ID пользователя, которого хотите сделать администратором:\n\n' +
+            '*Как узнать ID:*\n' +
+            '• Попросите пользователя написать боту @userinfobot\n' +
+            '• Или используйте @getmyid_bot\n\n' +
+            '*Введите только цифры ID:*', {
+            parse_mode: 'Markdown'
+        });
+    }
+
+    async confirmRemoveAdmin(chatId, messageId, adminId) {
+        const adminConfig = require('../config/adminConfig');
+
+        if (adminConfig.isSuperAdmin(parseInt(adminId))) {
+            return this.bot.editMessageText('❌ Нельзя удалить супер-администратора', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '⬅️ Назад', callback_data: 'admin_list_admins' }
+                    ]]
+                }
+            });
+        }
+
+        const text = `🗑 *Удаление администратора*\n\n` +
+            `🆔 *ID админа:* \`${adminId}\`\n\n` +
+            `⚠️ Вы уверены, что хотите удалить этого администратора?\n\n` +
+            `После удаления у пользователя не будет доступа к админ-панели.`;
+
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '✅ Да, удалить', callback_data: `admin_confirm_remove_${adminId}` },
+                    { text: '❌ Отмена', callback_data: 'admin_list_admins' }
+                ]
+            ]
+        };
+
+        this.bot.editMessageText(text, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+        });
+    }
+
+    async executeRemoveAdmin(chatId, messageId, adminId) {
+        try {
+            const adminConfig = require('../config/adminConfig');
+            const result = adminConfig.removeAdmin(parseInt(adminId), chatId);
+
+            if (result.success) {
+                this.bot.editMessageText(`✅ ${result.message}\n\n🆔 Удаленный админ: \`${adminId}\``, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown'
+                });
+
+                // Уведомляем удаленного админа
+                try {
+                    await this.bot.sendMessage(parseInt(adminId),
+                        '⚠️ *Внимание!*\n\nВы больше не являетесь администратором бота.\n\nДоступ к админ-панели отозван.',
+                        { parse_mode: 'Markdown' }
+                    );
+                } catch (error) {
+                    console.log('Не удалось уведомить удаленного админа:', error.message);
+                }
+
+                setTimeout(() => this.showAdminMenu(chatId), 2000);
+            } else {
+                this.bot.editMessageText(`❌ Ошибка: ${result.error}`, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: '⬅️ Назад', callback_data: 'admin_list_admins' }
+                        ]]
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Execute remove admin error:', error);
+            this.bot.sendMessage(chatId, '❌ Произошла ошибка при удалении админа');
         }
     }
 }
