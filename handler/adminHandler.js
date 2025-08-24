@@ -96,8 +96,9 @@ class AdminHandler {
         }
     }
 
-    // Главное меню администратора
-    showAdminMenu(chatId) {
+    // В файле handler/adminHandler.js замените метод showAdminMenu на этот:
+
+    showAdminMenu(chatId, messageId = null) {
         const keyboard = {
             inline_keyboard: [
                 [
@@ -109,18 +110,36 @@ class AdminHandler {
                     { text: '📋 Заказы', callback_data: 'admin_orders' }
                 ],
                 [
+                    { text: '👑 Управление админами', callback_data: 'admin_admins_management' },
                     { text: '📊 Статистика', callback_data: 'admin_stats' }
                 ]
             ]
         };
 
-        this.bot.sendMessage(chatId, '🔧 *Административная панель*\n\nВыберите раздел для управления:', {
-            parse_mode: 'Markdown',
-            reply_markup: keyboard
-        });
+        const text = '🔧 Административная панель\n\nВыберите раздел для управления:';
+
+        // Если есть messageId - редактируем сообщение, иначе отправляем новое
+        if (messageId) {
+            this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: keyboard
+            }).catch(error => {
+                console.log('Не удалось отредактировать сообщение, отправляем новое:', error.message);
+                // Fallback - отправляем новое сообщение
+                this.bot.sendMessage(chatId, text, {
+                    reply_markup: keyboard
+                });
+            });
+        } else {
+            this.bot.sendMessage(chatId, text, {
+                reply_markup: keyboard
+            });
+        }
     }
 
-    // Обработка админ callback'ов
+    // В файле handler/adminHandler.js в методе handleAdminCallback найдите и исправьте:
+
     async handleAdminCallback(query) {
         const data = query.data;
         const chatId = query.message.chat.id;
@@ -138,25 +157,8 @@ class AdminHandler {
                     await this.showOperatorsMenu(chatId, messageId);
                     break;
                 case 'admin_menu':
-                    await this.showAdminMenu(chatId);
-                    break;
-                case 'category_add':
-                    await this.startAddCategory(chatId);
-                    break;
-                case 'category_list':
-                    await this.showCategoriesList(chatId, messageId);
-                    break;
-                case 'product_add':
-                    await this.selectCategoryForProduct(chatId, messageId);
-                    break;
-                case 'product_list':
-                    await this.showProductsList(chatId, messageId);
-                    break;
-                case 'operator_add':
-                    await this.startAddOperator(chatId);
-                    break;
-                case 'operator_list':
-                    await this.showOperatorsList(chatId, messageId);
+                    // ИСПРАВЛЕНО: передаем messageId для редактирования
+                    await this.showAdminMenu(chatId, messageId);
                     break;
                 case 'admin_admins_management':
                     await this.showAdminsManagement(chatId, messageId);
@@ -168,93 +170,7 @@ class AdminHandler {
                     await this.showAdminsList(chatId, messageId);
                     break;
 
-                default:
-                    // Обработка динамических callback'ов
-                    if (data.startsWith('edit_category_')) {
-                        const categoryId = data.replace('edit_category_', '');
-                        await this.editCategory(chatId, messageId, categoryId);
-                    } else if (data.startsWith('delete_category_')) {
-                        const categoryId = data.replace('delete_category_', '');
-                        await this.deleteCategory(chatId, messageId, categoryId);
-                    } else if (data.startsWith('edit_cat_name_')) {
-                        const categoryId = data.replace('edit_cat_name_', '');
-                        await this.startEditCategoryName(chatId, categoryId);
-                    } else if (data.startsWith('toggle_cat_')) {
-                        const categoryId = data.replace('toggle_cat_', '');
-                        await this.toggleCategoryStatus(chatId, messageId, categoryId);
-                    } else if (data.startsWith('confirm_delete_cat_')) {
-                        const categoryId = data.replace('confirm_delete_cat_', '');
-                        await this.confirmDeleteCategory(chatId, messageId, categoryId);
-                    } else if (data.startsWith('add_product_to_')) {
-                        const categoryId = data.replace('add_product_to_', '');
-                        await this.startAddProduct(chatId, categoryId);
-                    } else if (data.startsWith('edit_product_')) {
-                        const productId = data.replace('edit_product_', '');
-                        await this.editProduct(chatId, messageId, productId);
-                    } else if (data.startsWith('delete_product_')) {
-                        const productId = data.replace('delete_product_', '');
-                        await this.deleteProduct(chatId, messageId, productId);
-                    } else if (data.startsWith('edit_prod_name_')) {
-                        const productId = data.replace('edit_prod_name_', '');
-                        await this.startEditProductName(chatId, productId);
-                    } else if (data.startsWith('edit_prod_desc_')) {
-                        const productId = data.replace('edit_prod_desc_', '');
-                        await this.startEditProductDescription(chatId, productId);
-                    } else if (data.startsWith('edit_prod_price_')) {
-                        const productId = data.replace('edit_prod_price_', '');
-                        await this.startEditProductPrice(chatId, productId);
-                    } else if (data.startsWith('manage_prod_photos_')) {
-                        const productId = data.replace('manage_prod_photos_', '');
-                        await this.manageProductPhotos(chatId, messageId, productId);
-                    } else if (data.startsWith('add_prod_photo_')) {
-                        const productId = data.replace('add_prod_photo_', '');
-                        await this.startAddProductPhoto(chatId, productId);
-                    } else if (data.startsWith('view_prod_photos_')) {
-                        const productId = data.replace('view_prod_photos_', '');
-                        await this.viewProductPhotos(chatId, messageId, productId);
-                    } else if (data.startsWith('set_main_photo_')) {
-                        const parts = data.replace('set_main_photo_', '').split('_');
-                        const productId = parts[0];
-                        const photoIndex = parseInt(parts[1]);
-                        await this.setMainPhoto(chatId, messageId, productId, photoIndex);
-                    } else if (data.startsWith('delete_photo_')) {
-                        const parts = data.replace('delete_photo_', '').split('_');
-                        const productId = parts[0];
-                        const photoIndex = parseInt(parts[1]);
-                        await this.deletePhoto(chatId, messageId, productId, photoIndex);
-                    } else if (data.startsWith('toggle_prod_')) {
-                        const productId = data.replace('toggle_prod_', '');
-                        await this.toggleProductStatus(chatId, messageId, productId);
-                    } else if (data.startsWith('confirm_delete_prod_')) {
-                        const productId = data.replace('confirm_delete_prod_', '');
-                        await this.confirmDeleteProduct(chatId, messageId, productId);
-                    }
-                    // === ОПЕРАТОРЫ ===
-                    else if (data.startsWith('edit_operator_')) {
-                        const operatorId = data.replace('edit_operator_', '');
-                        await this.editOperator(chatId, messageId, operatorId);
-                    } else if (data.startsWith('delete_operator_')) {
-                        const operatorId = data.replace('delete_operator_', '');
-                        await this.deleteOperator(chatId, messageId, operatorId);
-                    } else if (data.startsWith('edit_op_name_')) {
-                        const operatorId = data.replace('edit_op_name_', '');
-                        await this.startEditOperatorName(chatId, operatorId);
-                    } else if (data.startsWith('edit_op_username_')) {
-                        const operatorId = data.replace('edit_op_username_', '');
-                        await this.startEditOperatorUsername(chatId, operatorId);
-                    } else if (data.startsWith('toggle_op_')) {
-                        const operatorId = data.replace('toggle_op_', '');
-                        await this.toggleOperatorStatus(chatId, messageId, operatorId);
-                    } else if (data.startsWith('confirm_delete_op_')) {
-                        const operatorId = data.replace('confirm_delete_op_', '');
-                        await this.confirmDeleteOperator(chatId, messageId, operatorId);
-                    } else if (data.startsWith('admin_remove_admin_')) {
-                        const adminId = data.replace('admin_remove_admin_', '');
-                        await this.confirmRemoveAdmin(chatId, messageId, adminId); 
-                    } else if (data.startsWith('admin_confirm_remove_')) {
-                        const adminId = data.replace('admin_confirm_remove_', '');
-                        await this.executeRemoveAdmin(chatId, messageId, adminId);}
-                    break;
+                // ... остальные case'ы остаются без изменений
             }
         } catch (error) {
             console.error('Admin callback error:', error);
@@ -263,6 +179,7 @@ class AdminHandler {
 
         this.bot.answerCallbackQuery(query.id);
     }
+
 
     // === УПРАВЛЕНИЕ КАТЕГОРИЯМИ ===
 
@@ -1265,8 +1182,11 @@ class AdminHandler {
         }
     }
 
-    // === УПРАВЛЕНИЕ АДМИНИСТРАТОРАМИ ===
+    // В файле handler/adminHandler.js замените метод showAdminsManagement на этот:
+
     async showAdminsManagement(chatId, messageId) {
+        console.log('🔧 Показ управления админами для пользователя:', chatId);
+
         const keyboard = {
             inline_keyboard: [
                 [
@@ -1277,32 +1197,42 @@ class AdminHandler {
             ]
         };
 
-        if (messageId) {
-            this.bot.editMessageText('👥 *Управление администраторами*\n\nВыберите действие:', {
-                chat_id: chatId,
-                message_id: messageId,
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-        } else {
-            this.bot.sendMessage(chatId, '👥 *Управление администраторами*\n\nВыберите действие:', {
-                parse_mode: 'Markdown',
+        const text = '👥 Управление администраторами\n\nВыберите действие:';
+
+        try {
+            if (messageId) {
+                await this.bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: keyboard
+                });
+            } else {
+                await this.bot.sendMessage(chatId, text, {
+                    reply_markup: keyboard
+                });
+            }
+            console.log('✅ Меню управления админами отправлено');
+        } catch (error) {
+            console.error('❌ Ошибка показа меню админов:', error);
+            // Fallback - отправляем новое сообщение
+            this.bot.sendMessage(chatId, text, {
                 reply_markup: keyboard
             });
         }
     }
+    // В файле handler/adminHandler.js замените метод showAdminsList на этот:
 
     async showAdminsList(chatId, messageId) {
         try {
             const adminConfig = require('../config/adminConfig');
             const adminsList = adminConfig.getAdminsList();
 
-            let text = '👥 *Список администраторов:*\n\n';
+            let text = '👥 Список администраторов:\n\n';
 
             adminsList.forEach((admin, index) => {
                 const status = admin.isSuperAdmin ? '👑 Супер-админ' : '👤 Админ';
-                text += `${index + 1}\\. ${status}\n`;
-                text += `   🆔 ID: \`${admin.id}\`\n\n`;
+                text += `${index + 1}. ${status}\n`;
+                text += `   🆔 ID: ${admin.id}\n\n`; // Убираем backticks для избежания проблем
             });
 
             const keyboard = {
@@ -1326,7 +1256,7 @@ class AdminHandler {
             this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
-                parse_mode: 'Markdown',
+                // Убираем parse_mode для избежания ошибок
                 reply_markup: keyboard
             });
         } catch (error) {
@@ -1335,17 +1265,38 @@ class AdminHandler {
         }
     }
 
+    // В файле handler/adminHandler.js замените метод startAddAdmin на этот:
+
     async startAddAdmin(chatId) {
+        console.log('🔧 Запуск добавления админа для пользователя:', chatId);
+
         if (global.adminUtils) {
             global.adminUtils.createSession(chatId, 'adding_admin_id', {});
         }
 
-        this.bot.sendMessage(chatId, '➕ *Добавление нового администратора*\n\nВведите Telegram ID пользователя, которого хотите сделать администратором:\n\n' +
-            '*Как узнать ID:*\n' +
-            '• Попросите пользователя написать боту @userinfobot\n' +
-            '• Или используйте @getmyid_bot\n\n' +
-            '*Введите только цифры ID:*', {
-            parse_mode: 'Markdown'
+        // ИСПРАВЛЕННЫЙ ТЕКСТ БЕЗ ПРОБЛЕМНЫХ СИМВОЛОВ
+        const text = `➕ Добавление нового администратора
+
+Введите Telegram ID пользователя, которого хотите сделать администратором:
+
+Как узнать ID:
+• Попросите пользователя написать боту @userinfobot
+• Или используйте @getmyid_bot
+
+Введите только цифры ID:`;
+
+        this.bot.sendMessage(chatId, text, {
+            // Убираем parse_mode чтобы избежать ошибок с Markdown
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '⬅️ Назад', callback_data: 'admin_admins_management' }]
+                ]
+            }
+        }).then(() => {
+            console.log('✅ Сообщение о добавлении админа отправлено');
+        }).catch(error => {
+            console.error('❌ Ошибка отправки сообщения:', error);
+            this.bot.sendMessage(chatId, 'Введите Telegram ID нового администратора:');
         });
     }
 

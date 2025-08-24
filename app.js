@@ -176,7 +176,8 @@ class RealEstateBot {
         console.log(`👑 Администраторы: ${adminConfig.getAdminIds().join(', ')}`);
     }
 
-    // Обработка ввода данных администратором
+    // В файле app.js найдите метод handleAdminInput и убедитесь, что есть этот case:
+
     async handleAdminInput(msg, session) {
         const chatId = msg.chat.id;
         const userId = msg.from.id;
@@ -198,46 +199,13 @@ class RealEstateBot {
                     await this.handleEditCategoryName(chatId, userId, text, session.data.categoryId);
                     break;
 
-                case 'adding_product_name':
-                    await this.handleProductNameInput(chatId, userId, text, session.data.categoryId);
-                    break;
+                // ... другие case'ы ...
 
-                case 'adding_product_price':
-                    await this.handleNewProductPriceInput(chatId, userId, text, session.data);
-                    break;
-
-                case 'editing_product_name':
-                    await this.handleEditProductName(chatId, userId, text, session.data.productId);
-                    break;
-
-                case 'editing_product_description':
-                    await this.handleEditProductDescription(chatId, userId, text, session.data.productId);
-                    break;
-
-                case 'editing_product_price':
-                    await this.handleProductPriceInput(chatId, userId, text, session.data.productId);
-                    break;
-
-                case 'adding_operator_name':
-                    await this.handleOperatorNameInput(chatId, userId, text);
-                    break;
-
-                case 'adding_operator_username':
-                    await this.handleOperatorUsernameInput(chatId, userId, text, session.data.operatorName);
-                    break;
-
-                case 'editing_operator_name':
-                    await this.handleEditOperatorName(chatId, userId, text, session.data.operatorId);
-                    break;
-
-                case 'editing_operator_username':
-                    await this.handleEditOperatorUsername(chatId, userId, text, session.data.operatorId);
-                    break;
-
-                // ДОБАВЬТЕ ЭТУ СТРОКУ ЗДЕСЬ (прямо перед default:):
+                // ============ УБЕДИТЕСЬ ЧТО ЕСТЬ ЭТОТ CASE ============
                 case 'adding_admin_id':
                     await this.handleAdminIdInput(chatId, userId, text);
                     break;
+                // =====================================================
 
                 default:
                     console.log('Неизвестный тип сессии:', session.type);
@@ -585,7 +553,11 @@ class RealEstateBot {
         }
     }
 
+    // Добавьте этот метод в класс RealEstateBot в app.js (если его нет):
+
     async handleAdminIdInput(chatId, userId, text) {
+        console.log('Обработка добавления админа:', { userId, text });
+
         const adminId = parseInt(text.trim());
 
         if (isNaN(adminId) || adminId <= 0) {
@@ -598,11 +570,15 @@ class RealEstateBot {
 
         try {
             const adminConfig = require('./config/adminConfig');
+            console.log('Попытка добавить админа:', adminId, 'добавляет:', userId);
+
             const result = adminConfig.addAdmin(adminId, userId);
 
             this.adminUtils.clearSession(userId);
 
             if (result.success) {
+                console.log('Админ успешно добавлен:', result);
+
                 this.bot.sendMessage(chatId, `✅ ${result.message}\n\n🆔 Новый админ: \`${adminId}\``, {
                     parse_mode: 'Markdown'
                 });
@@ -620,12 +596,14 @@ class RealEstateBot {
                         '• Просмотр статистики',
                         { parse_mode: 'Markdown' }
                     );
+                    console.log('Уведомление новому админу отправлено');
                 } catch (error) {
                     console.log('Не удалось уведомить нового админа:', error.message);
                 }
 
                 setTimeout(() => this.adminHandler.showAdminMenu(chatId), 2000);
             } else {
+                console.log('Ошибка добавления админа:', result);
                 this.bot.sendMessage(chatId, `❌ Ошибка: ${result.error}`);
             }
         } catch (error) {
