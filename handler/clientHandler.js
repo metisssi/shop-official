@@ -571,6 +571,9 @@ class ClientHandler {
         }
     }
 
+    // В файле handler/clientHandler.js
+    // ЗАМЕНИТЬ строки 680-730 на эту улучшенную версию:
+
     async createOrderInDatabase(chatId, paymentMethod, status = 'new') {
         try {
             const session = this.getUserSession(chatId);
@@ -600,62 +603,8 @@ class ClientHandler {
                 status: status
             });
 
-            // Формируем текст заказа для @metisuk
-            let orderText = `🔔 *НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}*\n\n`;
-
-            // Информация о клиенте
-            orderText += `👤 *Клиент:* ${user.firstName || 'Пользователь'}`;
-            if (user.lastName) orderText += ` ${user.lastName}`;
-            orderText += `\n`;
-            if (user.username) orderText += `📱 @${user.username}\n`;
-            orderText += `🆔 ID: ${chatId}\n\n`;
-
-            // Адрес доставки
-            orderText += `📍 *Адрес доставки:*\n${session.deliveryAddress}\n\n`;
-
-            // Товары
-            orderText += `🛒 *Товары:*\n`;
-            session.cart.forEach((item, index) => {
-                orderText += `${index + 1}. *${item.name}*\n`;
-                orderText += `   📦 Количество: ${item.quantity}\n`;
-                orderText += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
-                orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
-            });
-
-            // Итого
-            orderText += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
-            orderText += `💰 *Способ оплаты:* ${paymentMethod === 'card' ? '💳 Карта' : '💵 Наличные'}\n`;
-            orderText += `📅 *Дата заказа:* ${new Date().toLocaleString('ru-RU')}\n\n`;
-
-            orderText += `🔔 *Обработайте заказ и свяжитесь с клиентом!*`;
-
-            // Отправляем заказ на @metisuk
-            try {
-                await this.bot.sendMessage('@metisuk', orderText, { parse_mode: 'Markdown' });
-                console.log('✅ Заказ отправлен на @metisuk');
-
-                // Отправляем дополнительное сообщение оператору
-                await this.bot.sendMessage('@metisuk',
-                    `📞 *Свяжитесь с клиентом для уточнения деталей заказа*\n\n👤 Клиент: ${user.firstName || 'Пользователь'}\n🆔 ID: ${chatId}`,
-                    { parse_mode: 'Markdown' }
-                );
-
-            } catch (error) {
-                console.error('❌ Не удалось отправить заказ на @metisuk:', error);
-                // В качестве запасного варианта отправляем операторам из конфига
-                for (const operatorId of Object.values(config.OPERATORS)) {
-                    try {
-                        await this.bot.sendMessage(operatorId, orderText, { parse_mode: 'Markdown' });
-                        // И дополнительное сообщение для связи
-                        await this.bot.sendMessage(operatorId,
-                            `📞 *Свяжитесь с клиентом для уточнения деталей заказа*\n\n👤 Клиент: ${user.firstName || 'Пользователь'}\n🆔 ID: ${chatId}`,
-                            { parse_mode: 'Markdown' }
-                        );
-                    } catch (error) {
-                        console.error(`Не удалось отправить заказ оператору ${operatorId}:`, error);
-                    }
-                }
-            }
+            // УЛУЧШЕННОЕ уведомление о заказе
+            await this.sendOrderNotification(order, user, session);
 
             // Очищаем корзину и адрес
             session.cart = [];
@@ -667,6 +616,97 @@ class ClientHandler {
         } catch (error) {
             console.error('Ошибка при создании заказа:', error);
             throw error;
+        }
+    }
+
+    // НОВАЯ функция для отправки уведомлений (ДОБАВИТЬ после строки 730):
+    async sendOrderNotification(order, user, session) {
+        try {
+            // Формируем детальное уведомление о заказе
+            let orderText = `🔔 *НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}*\n\n`;
+
+            // Информация о клиенте
+            orderText += `👤 *Клиент:* ${user.firstName || 'Пользователь'}`;
+            if (user.lastName) orderText += ` ${user.lastName}`;
+            orderText += `\n`;
+            if (user.username) orderText += `📱 Username: @${user.username}\n`;
+            orderText += `🆔 Telegram ID: ${order.userId}\n`;
+            if (user.phone) orderText += `📞 Телефон: ${user.phone}\n`;
+            orderText += `\n`;
+
+            // Адрес доставки
+            orderText += `📍 *АДРЕС ДОСТАВКИ:*\n`;
+            orderText += `${session.deliveryAddress}\n\n`;
+
+            // Детальная информация о товарах
+            orderText += `🛒 *ЗАКАЗАННЫЕ ТОВАРЫ:*\n`;
+            session.cart.forEach((item, index) => {
+                orderText += `\n${index + 1}. *${item.name}*\n`;
+                orderText += `   📦 Количество: *${item.quantity} шт.*\n`;
+                orderText += `   💰 Цена за единицу: *${item.price.toLocaleString('cs-CZ')} Kč*\n`;
+                orderText += `   💵 Общая стоимость: *${item.total.toLocaleString('cs-CZ')} Kč*\n`;
+            });
+
+            // Итоговая информация
+            orderText += `\n💳 *ИТОГО К ОПЛАТЕ: ${order.totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
+            orderText += `💰 *Способ оплаты:* ${paymentMethod === 'card' ? '💳 Перевод на карту' : '💵 Наличные при встрече'}\n`;
+            orderText += `📅 *Дата и время заказа:* ${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Prague' })}\n`;
+            orderText += `🔄 *Статус:* ${status === 'pending_payment' ? '⏳ Ожидает подтверждения оплаты' : '✅ Подтвержден'}\n\n`;
+
+            orderText += `🚨 *ВНИМАНИЕ! НОВЫЙ ЗАКАЗ ТРЕБУЕТ ОБРАБОТКИ*\n`;
+            orderText += `📞 *Свяжитесь с клиентом для уточнения деталей доставки!*`;
+
+            console.log('📧 Отправка уведомления о заказе на @metisuk');
+            console.log('📋 Детали заказа:', {
+                orderId: order._id,
+                userId: order.userId,
+                totalAmount: order.totalAmount,
+                itemsCount: session.cart.length
+            });
+
+            // Отправляем основное уведомление на @metisuk
+            try {
+                await this.bot.sendMessage('@metisuk', orderText, {
+                    parse_mode: 'Markdown',
+                    disable_web_page_preview: true
+                });
+                console.log('✅ Уведомление успешно отправлено на @metisuk');
+
+                // Отправляем дополнительное напоминание через 5 секунд
+                setTimeout(async () => {
+                    try {
+                        const reminderText = `🔔 *НАПОМИНАНИЕ О НОВОМ ЗАКАЗЕ*\n\n` +
+                            `📋 Заказ #${order._id.toString().slice(-6)}\n` +
+                            `👤 Клиент: ${user.firstName || 'Пользователь'}\n` +
+                            `🆔 ID: ${order.userId}\n` +
+                            `💰 Сумма: ${order.totalAmount.toLocaleString('cs-CZ')} Kč\n\n` +
+                            `⚠️ *ТРЕБУЕТ НЕМЕДЛЕННОЙ ОБРАБОТКИ!*`;
+
+                        await this.bot.sendMessage('@metisuk', reminderText, { parse_mode: 'Markdown' });
+                        console.log('✅ Напоминание отправлено на @metisuk');
+                    } catch (error) {
+                        console.error('❌ Ошибка отправки напоминания:', error);
+                    }
+                }, 5000);
+
+            } catch (error) {
+                console.error('❌ Не удалось отправить на @metisuk:', error);
+                console.log('🔄 Пытаемся отправить операторам из конфига...');
+
+                // Резервный вариант - отправляем операторам из конфига
+                for (const operatorId of Object.values(config.OPERATORS)) {
+                    try {
+                        await this.bot.sendMessage(operatorId, orderText, { parse_mode: 'Markdown' });
+                        await this.bot.sendMessage(operatorId, `📞 *Свяжитесь с клиентом:*\n👤 ${user.firstName || 'Пользователь'}\n🆔 ID: ${order.userId}`, { parse_mode: 'Markdown' });
+                        console.log(`✅ Уведомление отправлено оператору ${operatorId}`);
+                    } catch (error) {
+                        console.error(`❌ Ошибка отправки оператору ${operatorId}:`, error);
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error('❌ Критическая ошибка при отправке уведомлений:', error);
         }
     }
     async requestCustomQuantity(chatId, messageId, propertyId) {
