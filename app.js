@@ -96,15 +96,7 @@ class RealEstateBot {
             this.clientHandler.handleStart(msg);
         });
 
-        // Команда /admin (только для администраторов)
-        this.bot.onText(/\/admin/, (msg) => {
-            console.log('📥 Получена команда /admin от пользователя:', msg.from.id);
-            if (!adminConfig.isAdmin(msg.from.id)) {
-                console.log('🚫 Пользователь не является администратором');
-                return this.bot.sendMessage(msg.chat.id, '❌ У вас нет прав администратора');
-            }
-            this.adminHandler.showAdminMenu(msg.chat.id);
-        });
+
 
         // Обработка фотографий
         this.bot.on('photo', (msg) => {
@@ -176,7 +168,6 @@ class RealEstateBot {
         console.log(`👑 Администраторы: ${adminConfig.getAdminIds().join(', ')}`);
     }
 
-    // В файле app.js найдите метод handleAdminInput и убедитесь, что есть этот case:
 
     async handleAdminInput(msg, session) {
         const chatId = msg.chat.id;
@@ -199,13 +190,52 @@ class RealEstateBot {
                     await this.handleEditCategoryName(chatId, userId, text, session.data.categoryId);
                     break;
 
-                // ... другие case'ы ...
+                // === ТОВАРЫ ===
+                case 'adding_product_name':
+                    await this.handleProductNameInput(chatId, userId, text, session.data.categoryId);
+                    break;
 
-                // ============ УБЕДИТЕСЬ ЧТО ЕСТЬ ЭТОТ CASE ============
+                case 'adding_product_price':
+                    await this.handleNewProductPriceInput(chatId, userId, text, session.data);
+                    break;
+
+                case 'editing_product_name':
+                    await this.handleEditProductName(chatId, userId, text, session.data.productId);
+                    break;
+
+                case 'editing_product_description':
+                    await this.handleEditProductDescription(chatId, userId, text, session.data.productId);
+                    break;
+
+                case 'editing_product_price':
+                    await this.handleProductPriceInput(chatId, userId, text, session.data.productId);
+                    break;
+
+                // === ОПЕРАТОРЫ (ДОБАВИТЬ ЭТИ CASE'Ы) ===
+                case 'adding_operator_name':
+                    await this.handleOperatorNameInput(chatId, userId, text);
+                    break;
+
+                case 'adding_operator_username':
+                    await this.handleOperatorUsernameInput(chatId, userId, text, session.data.operatorName);
+                    break;
+
+                case 'adding_operator_id':
+                    await this.handleOperatorIdInput(chatId, userId, text, session.data);
+                    break;
+
+                case 'editing_operator_name':
+                    await this.handleEditOperatorName(chatId, userId, text, session.data.operatorId);
+                    break;
+
+                case 'editing_operator_username':
+                    await this.handleEditOperatorUsername(chatId, userId, text, session.data.operatorId);
+                    break;
+
+                // === АДМИНЫ ===
                 case 'adding_admin_id':
                     await this.handleAdminIdInput(chatId, userId, text);
                     break;
-                // =====================================================
 
                 default:
                     console.log('Неизвестный тип сессии:', session.type);
@@ -450,25 +480,42 @@ class RealEstateBot {
     async handleOperatorUsernameInput(chatId, userId, text, operatorName) {
         const username = text.trim().replace('@', '');
 
-        if (!username || username.length < 3) {
-            return this.bot.sendMessage(chatId, `❌ Username должен содержать минимум 3 символа\nПопробуйте еще раз:`);
-        }
+        // ... валидация username ...
 
-        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-            return this.bot.sendMessage(chatId, `❌ Username может содержать только буквы, цифры и подчеркивания\nПопробуйте еще раз:`);
+        // ИЗМЕНЕНО: сначала создаем оператора без ID
+        this.adminUtils.createSession(userId, 'adding_operator_id', {
+            operatorName: operatorName,
+            username: username
+        });
+
+        const escapedName = this.escapeMarkdown(operatorName);
+        this.bot.sendMessage(chatId,
+            `👤 Имя: "${escapedName}"\n📱 Username: @${username}\n\n🆔 Теперь введите Telegram ID оператора:\n\n(Попросите оператора написать боту @userinfobot или @getmyid_bot)`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // НОВЫЙ метод для обработки ID
+    async handleOperatorIdInput(chatId, userId, text, sessionData) {
+        const telegramId = parseInt(text.trim());
+
+        if (isNaN(telegramId) || telegramId <= 0) {
+            return this.bot.sendMessage(chatId, '❌ Неверный формат ID. Введите корректный Telegram ID (только цифры):');
         }
 
         try {
             const Operator = require('./models/Operator');
 
-            const existingOperator = await Operator.findOne({ username: username });
+            // Проверяем, нет ли уже оператора с таким ID
+            const existingOperator = await Operator.findOne({ telegramId: telegramId });
             if (existingOperator) {
-                return this.bot.sendMessage(chatId, `❌ Оператор с username @${username} уже существует\nВведите другой username:`);
+                return this.bot.sendMessage(chatId, `❌ Оператор с ID ${telegramId} уже существует\nВведите другой ID:`);
             }
 
             const operator = new Operator({
-                name: operatorName,
-                username: username,
+                name: sessionData.operatorName,
+                username: sessionData.username,
+                telegramId: telegramId,
                 description: '',
                 isActive: true,
                 specialization: 'general',
@@ -478,10 +525,11 @@ class RealEstateBot {
             await operator.save();
             this.adminUtils.clearSession(userId);
 
-            const escapedName = this.escapeMarkdown(operatorName);
-            this.bot.sendMessage(chatId, `✅ Оператор "${escapedName}" (@${username}) успешно создан!`, {
-                parse_mode: 'Markdown'
-            });
+            const escapedName = this.escapeMarkdown(sessionData.operatorName);
+            this.bot.sendMessage(chatId,
+                `✅ Оператор "${escapedName}" создан!\n📱 @${sessionData.username}\n🆔 ID: ${telegramId}`,
+                { parse_mode: 'Markdown' }
+            );
 
             setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
         } catch (error) {
