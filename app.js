@@ -96,6 +96,17 @@ class RealEstateBot {
             this.clientHandler.handleStart(msg);
         });
 
+        // В секцию setupHandlers() добавьте:
+        this.bot.onText(/\/test_notifications/, async (msg) => {
+            const adminConfig = require('./config/adminConfig');
+            if (!adminConfig.isAdmin(msg.from.id)) {
+                return;
+            }
+
+            console.log('🧪 Тестирование системы уведомлений...');
+            await this.testNotificationSystem(msg.chat.id);
+        });
+
 
 
         // Обработка фотографий
@@ -461,6 +472,8 @@ class RealEstateBot {
     }
 
     // === ОБРАБОТЧИКИ ОПЕРАТОРОВ ===
+    // В файле app.js замените методы обработки операторов на эти:
+
     async handleOperatorNameInput(chatId, userId, text) {
         const validation = this.adminUtils.validateName(text);
         if (!validation.valid) {
@@ -480,22 +493,40 @@ class RealEstateBot {
     async handleOperatorUsernameInput(chatId, userId, text, operatorName) {
         const username = text.trim().replace('@', '');
 
-        // ... валидация username ...
+        if (!username || username.length < 3) {
+            return this.bot.sendMessage(chatId, `❌ Username должен содержать минимум 3 символа\nПопробуйте еще раз:`);
+        }
 
-        // ИЗМЕНЕНО: сначала создаем оператора без ID
-        this.adminUtils.createSession(userId, 'adding_operator_id', {
-            operatorName: operatorName,
-            username: username
-        });
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+            return this.bot.sendMessage(chatId, `❌ Username может содержать только буквы, цифры и подчеркивания\nПопробуйте еще раз:`);
+        }
 
-        const escapedName = this.escapeMarkdown(operatorName);
-        this.bot.sendMessage(chatId,
-            `👤 Имя: "${escapedName}"\n📱 Username: @${username}\n\n🆔 Теперь введите Telegram ID оператора:\n\n(Попросите оператора написать боту @userinfobot или @getmyid_bot)`,
-            { parse_mode: 'Markdown' }
-        );
+        try {
+            const Operator = require('./models/Operator');
+
+            // Проверяем, нет ли уже оператора с таким username
+            const existingOperator = await Operator.findOne({ username: username });
+            if (existingOperator) {
+                return this.bot.sendMessage(chatId, `❌ Оператор с username @${username} уже существует\nВведите другой username:`);
+            }
+
+            // Переходим к вводу ID
+            this.adminUtils.createSession(userId, 'adding_operator_id', {
+                operatorName: operatorName,
+                username: username
+            });
+
+            const escapedName = this.escapeMarkdown(operatorName);
+            this.bot.sendMessage(chatId,
+                `👤 Имя: "${escapedName}"\n📱 Username: @${username}\n\n🆔 Теперь введите Telegram ID оператора:\n\n💡 Как узнать ID:\n• Попросите оператора написать боту @userinfobot\n• Или используйте @getmyid_bot\n\nВведите только цифры ID:`,
+                { parse_mode: 'Markdown' }
+            );
+        } catch (error) {
+            console.error('Operator username validation error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при проверке username. Попробуйте еще раз.');
+        }
     }
 
-    // НОВЫЙ метод для обработки ID
     async handleOperatorIdInput(chatId, userId, text, sessionData) {
         const telegramId = parseInt(text.trim());
 
@@ -512,6 +543,7 @@ class RealEstateBot {
                 return this.bot.sendMessage(chatId, `❌ Оператор с ID ${telegramId} уже существует\nВведите другой ID:`);
             }
 
+            // Создаем нового оператора
             const operator = new Operator({
                 name: sessionData.operatorName,
                 username: sessionData.username,
@@ -527,11 +559,31 @@ class RealEstateBot {
 
             const escapedName = this.escapeMarkdown(sessionData.operatorName);
             this.bot.sendMessage(chatId,
-                `✅ Оператор "${escapedName}" создан!\n📱 @${sessionData.username}\n🆔 ID: ${telegramId}`,
+                `✅ Оператор "${escapedName}" успешно создан!\n\n👤 Имя: ${sessionData.operatorName}\n📱 Username: @${sessionData.username}\n🆔 ID: \`${telegramId}\`\n\n🎯 Теперь оператор будет получать уведомления о всех новых заказах!`,
                 { parse_mode: 'Markdown' }
             );
 
-            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 1000);
+            // Уведомляем нового оператора
+            try {
+                await this.bot.sendMessage(telegramId,
+                    `🎉 *Добро пожаловать!*\n\nВы назначены оператором интернет-магазина!\n\n` +
+                    `🔔 *Теперь вы будете получать уведомления о всех новых заказах клиентов.*\n\n` +
+                    `📋 *В уведомлениях будет вся информация:*\n` +
+                    `• Данные клиента\n` +
+                    `• Адрес доставки\n` +
+                    `• Список товаров\n` +
+                    `• Сумма заказа\n` +
+                    `• Способ оплаты\n\n` +
+                    `💡 *Ваша задача* - связаться с клиентом и уточнить детали доставки.`,
+                    { parse_mode: 'Markdown' }
+                );
+                console.log('✅ Приветствие отправлено новому оператору');
+            } catch (error) {
+                console.log('⚠️ Не удалось отправить приветствие оператору:', error.message);
+            }
+
+            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 2000);
+
         } catch (error) {
             console.error('Create operator error:', error);
             this.adminUtils.clearSession(userId);
@@ -664,6 +716,129 @@ class RealEstateBot {
     // === УПРОЩЕННЫЙ МЕТОД ФОРМАТИРОВАНИЯ ЦЕНЫ ===
     formatPrice(price) {
         return `${new Intl.NumberFormat('cs-CZ').format(price)} Kč`;
+    }
+
+
+    async testNotificationSystem(chatId) {
+        try {
+            // Создаем тестовый заказ
+            const testOrder = {
+                _id: { toString: () => '66a1b2c3d4e5f6789012345a' },
+                userId: chatId,
+                totalAmount: 2500000,
+                paymentMethod: 'card',
+                createdAt: new Date()
+            };
+
+            const testUser = {
+                firstName: 'Тестовый',
+                lastName: 'Пользователь',
+                username: 'test_user'
+            };
+
+            const testSession = {
+                deliveryAddress: 'Praha, Václavské náměstí 1, 110 00',
+                cart: [
+                    {
+                        name: 'Тестовый товар 1',
+                        quantity: 2,
+                        price: 1000000,
+                        total: 2000000
+                    },
+                    {
+                        name: 'Тестовый товар 2',
+                        quantity: 1,
+                        price: 500000,
+                        total: 500000
+                    }
+                ]
+            };
+
+            // Формируем уведомление
+            let orderText = `🧪 *ТЕСТ СИСТЕМЫ - ЗАКАЗ #${testOrder._id.toString().slice(-6)}*\n\n`;
+            orderText += `👤 *Клиент:*\n`;
+            orderText += `   Имя: ${testUser.firstName} ${testUser.lastName}\n`;
+            orderText += `   Username: @${testUser.username}\n`;
+            orderText += `   ID: \`${testOrder.userId}\`\n\n`;
+            orderText += `📍 *Адрес доставки:*\n${testSession.deliveryAddress}\n\n`;
+            orderText += `🛒 *Детали заказа:*\n`;
+
+            testSession.cart.forEach((item, index) => {
+                orderText += `${index + 1}\\. *${item.name}*\n`;
+                orderText += `   📦 Количество: ${item.quantity}\n`;
+                orderText += `   💰 Цена за шт: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
+            });
+
+            orderText += `💳 *Общая сумма: ${testOrder.totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
+            orderText += `💰 *Способ оплаты:* ${testOrder.paymentMethod === 'card' ? '💳 Оплата на карту' : '💵 Наличными при встрече'}\n`;
+            orderText += `📅 *Дата заказа:* ${testOrder.createdAt.toLocaleString('ru-RU')}\n\n`;
+            orderText += `🧪 *ЭТО ТЕСТОВОЕ УВЕДОМЛЕНИЕ - НЕ НАСТОЯЩИЙ ЗАКАЗ!*`;
+
+            // Проверяем операторов в БД
+            const Operator = require('./models/Operator');
+            const activeOperators = await Operator.find({
+                isActive: true,
+                telegramId: { $exists: true, $ne: null }
+            });
+
+            let resultText = `🧪 *Результаты тестирования системы уведомлений:*\n\n`;
+            resultText += `📧 *Операторы в БД:* ${activeOperators.length}\n\n`;
+
+            // Отправляем тест операторам
+            if (activeOperators.length > 0) {
+                for (const operator of activeOperators) {
+                    try {
+                        await this.bot.sendMessage(operator.telegramId, orderText, {
+                            parse_mode: 'Markdown',
+                            disable_web_page_preview: true
+                        });
+                        resultText += `✅ ${operator.name} (${operator.telegramId})\n`;
+                    } catch (error) {
+                        resultText += `❌ ${operator.name} (${operator.telegramId}) - ${error.message}\n`;
+                    }
+                }
+            } else {
+                resultText += `⚠️ *Операторы не найдены в БД!*\n\n`;
+            }
+
+            // Проверяем админов
+            const adminConfig = require('./config/adminConfig');
+            const adminIds = adminConfig.getAdminIds();
+            resultText += `\n👑 *Админы:* ${adminIds.length}\n\n`;
+
+            for (const adminId of adminIds) {
+                try {
+                    if (adminId !== chatId) { // Не отправляем себе
+                        await this.bot.sendMessage(adminId, orderText, {
+                            parse_mode: 'Markdown',
+                            disable_web_page_preview: true
+                        });
+                        resultText += `✅ Админ ${adminId}\n`;
+                    }
+                } catch (error) {
+                    resultText += `❌ Админ ${adminId} - ${error.message}\n`;
+                }
+            }
+
+            // Тестируем канал
+            try {
+                await this.bot.sendMessage('@metisuk', orderText, {
+                    parse_mode: 'Markdown',
+                    disable_web_page_preview: true
+                });
+                resultText += `\n✅ *Канал @metisuk:* Доставлено`;
+            } catch (error) {
+                resultText += `\n❌ *Канал @metisuk:* ${error.message}`;
+            }
+
+            // Отправляем результат
+            this.bot.sendMessage(chatId, resultText, { parse_mode: 'Markdown' });
+
+        } catch (error) {
+            console.error('Test notifications error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при тестировании системы уведомлений');
+        }
     }
 }
 

@@ -140,6 +140,8 @@ class AdminHandler {
 
     // В файле handler/adminHandler.js в методе handleAdminCallback найдите и исправьте:
 
+    // В файле handler/adminHandler.js замените метод handleAdminCallback на этот:
+
     async handleAdminCallback(query) {
         const data = query.data;
         const chatId = query.message.chat.id;
@@ -147,6 +149,7 @@ class AdminHandler {
 
         try {
             switch (data) {
+                // === ОСНОВНЫЕ РАЗДЕЛЫ АДМИНКИ ===
                 case 'admin_categories':
                     await this.showCategoriesMenu(chatId, messageId);
                     break;
@@ -156,13 +159,41 @@ class AdminHandler {
                 case 'admin_operators':
                     await this.showOperatorsMenu(chatId, messageId);
                     break;
-                case 'admin_menu':
-                    // ИСПРАВЛЕНО: передаем messageId для редактирования
-                    await this.showAdminMenu(chatId, messageId);
+                case 'admin_orders':
+                    await this.showOrdersMenu(chatId, messageId);
                     break;
                 case 'admin_admins_management':
                     await this.showAdminsManagement(chatId, messageId);
                     break;
+                case 'admin_menu':
+                    await this.showAdminMenu(chatId, messageId);
+                    break;
+
+                // === УПРАВЛЕНИЕ КАТЕГОРИЯМИ ===
+                case 'category_add':
+                    await this.startAddCategory(chatId);
+                    break;
+                case 'category_list':
+                    await this.showCategoriesList(chatId, messageId);
+                    break;
+
+                // === УПРАВЛЕНИЕ ТОВАРАМИ ===
+                case 'product_add':
+                    await this.selectCategoryForProduct(chatId, messageId);
+                    break;
+                case 'product_list':
+                    await this.showProductsList(chatId, messageId);
+                    break;
+
+                // === УПРАВЛЕНИЕ ОПЕРАТОРАМИ ===
+                case 'operator_add':
+                    await this.startAddOperator(chatId);
+                    break;
+                case 'operator_list':
+                    await this.showOperatorsList(chatId, messageId);
+                    break;
+
+                // === УПРАВЛЕНИЕ АДМИНАМИ ===
                 case 'admin_add_admin':
                     await this.startAddAdmin(chatId);
                     break;
@@ -170,7 +201,10 @@ class AdminHandler {
                     await this.showAdminsList(chatId, messageId);
                     break;
 
-                // ... остальные case'ы остаются без изменений
+                // === ДИНАМИЧЕСКИЕ CALLBACK'Ы ===
+                default:
+                    await this.handleDynamicCallback(data, chatId, messageId);
+                    break;
             }
         } catch (error) {
             console.error('Admin callback error:', error);
@@ -178,6 +212,153 @@ class AdminHandler {
         }
 
         this.bot.answerCallbackQuery(query.id);
+    }
+
+    // Новый метод для обработки динамических callback'ов
+    async handleDynamicCallback(data, chatId, messageId) {
+        console.log('🔧 Обработка динамического callback:', data);
+
+        // === КАТЕГОРИИ ===
+        if (data.startsWith('edit_category_')) {
+            const categoryId = data.split('_')[2];
+            await this.editCategory(chatId, messageId, categoryId);
+        }
+        else if (data.startsWith('delete_category_')) {
+            const categoryId = data.split('_')[2];
+            await this.deleteCategory(chatId, messageId, categoryId);
+        }
+        else if (data.startsWith('confirm_delete_cat_')) {
+            const categoryId = data.split('_')[3];
+            await this.confirmDeleteCategory(chatId, messageId, categoryId);
+        }
+        else if (data.startsWith('toggle_cat_')) {
+            const categoryId = data.split('_')[2];
+            await this.toggleCategoryStatus(chatId, messageId, categoryId);
+        }
+        else if (data.startsWith('edit_cat_name_')) {
+            const categoryId = data.split('_')[3];
+            await this.startEditCategoryName(chatId, categoryId);
+        }
+
+        // === ТОВАРЫ ===
+        else if (data.startsWith('add_product_to_')) {
+            const categoryId = data.split('_')[3];
+            await this.startAddProduct(chatId, categoryId);
+        }
+        else if (data.startsWith('edit_product_')) {
+            const productId = data.split('_')[2];
+            await this.editProduct(chatId, messageId, productId);
+        }
+        else if (data.startsWith('delete_product_')) {
+            const productId = data.split('_')[2];
+            await this.deleteProduct(chatId, messageId, productId);
+        }
+        else if (data.startsWith('confirm_delete_prod_')) {
+            const productId = data.split('_')[3];
+            await this.confirmDeleteProduct(chatId, messageId, productId);
+        }
+        else if (data.startsWith('toggle_prod_')) {
+            const productId = data.split('_')[2];
+            await this.toggleProductStatus(chatId, messageId, productId);
+        }
+        else if (data.startsWith('edit_prod_name_')) {
+            const productId = data.split('_')[3];
+            await this.startEditProductName(chatId, productId);
+        }
+        else if (data.startsWith('edit_prod_desc_')) {
+            const productId = data.split('_')[3];
+            await this.startEditProductDescription(chatId, productId);
+        }
+        else if (data.startsWith('edit_prod_price_')) {
+            const productId = data.split('_')[3];
+            await this.startEditProductPrice(chatId, productId);
+        }
+        else if (data.startsWith('manage_prod_photos_')) {
+            const productId = data.split('_')[3];
+            await this.manageProductPhotos(chatId, messageId, productId);
+        }
+        else if (data.startsWith('add_prod_photo_')) {
+            const productId = data.split('_')[3];
+            await this.startAddProductPhoto(chatId, productId);
+        }
+        else if (data.startsWith('view_prod_photos_')) {
+            const productId = data.split('_')[3];
+            await this.viewProductPhotos(chatId, messageId, productId);
+        }
+        else if (data.startsWith('set_main_photo_')) {
+            const [, , , productId, photoIndex] = data.split('_');
+            await this.setMainPhoto(chatId, messageId, productId, parseInt(photoIndex));
+        }
+        else if (data.startsWith('delete_photo_')) {
+            const [, , productId, photoIndex] = data.split('_');
+            await this.deletePhoto(chatId, messageId, productId, parseInt(photoIndex));
+        }
+
+        // === ОПЕРАТОРЫ ===
+        else if (data.startsWith('edit_operator_')) {
+            const operatorId = data.split('_')[2];
+            await this.editOperator(chatId, messageId, operatorId);
+        }
+        else if (data.startsWith('delete_operator_')) {
+            const operatorId = data.split('_')[2];
+            await this.deleteOperator(chatId, messageId, operatorId);
+        }
+        else if (data.startsWith('confirm_delete_op_')) {
+            const operatorId = data.split('_')[3];
+            await this.confirmDeleteOperator(chatId, messageId, operatorId);
+        }
+        else if (data.startsWith('toggle_op_')) {
+            const operatorId = data.split('_')[2];
+            await this.toggleOperatorStatus(chatId, messageId, operatorId);
+        }
+        else if (data.startsWith('edit_op_name_')) {
+            const operatorId = data.split('_')[3];
+            await this.startEditOperatorName(chatId, operatorId);
+        }
+        else if (data.startsWith('edit_op_username_')) {
+            const operatorId = data.split('_')[3];
+            await this.startEditOperatorUsername(chatId, operatorId);
+        }
+
+        // === АДМИНЫ ===
+        else if (data.startsWith('admin_remove_admin_')) {
+            const adminId = data.split('_')[3];
+            await this.confirmRemoveAdmin(chatId, messageId, adminId);
+        }
+        else if (data.startsWith('admin_confirm_remove_')) {
+            const adminId = data.split('_')[3];
+            await this.executeRemoveAdmin(chatId, messageId, adminId);
+        }
+
+        // === ЗАКАЗЫ ===
+        else if (data.startsWith('admin_view_order_')) {
+            const orderId = data.split('_')[3];
+            await this.viewOrder(chatId, messageId, orderId);
+        } else if (data.startsWith('orders_')) {
+            const status = data.split('_')[1];
+            if (status === 'all') {
+                await this.showOrdersList(chatId, messageId);
+            } else {
+                await this.showOrdersList(chatId, messageId, status);
+            }
+        }
+        else if (data.startsWith('order_confirm_')) {
+            const orderId = data.split('_')[2];
+            await this.updateOrderStatus(chatId, messageId, orderId, 'confirmed');
+        }
+        else if (data.startsWith('order_cancel_')) {
+            const orderId = data.split('_')[2];
+            await this.updateOrderStatus(chatId, messageId, orderId, 'cancelled');
+        }
+        else if (data.startsWith('order_complete_')) {
+            const orderId = data.split('_')[2];
+            await this.updateOrderStatus(chatId, messageId, orderId, 'completed');
+        }
+
+        // === НЕИЗВЕСТНЫЕ CALLBACK'Ы ===
+        else {
+            console.log('❓ Неизвестный callback:', data);
+        }
     }
 
 
@@ -1376,6 +1557,219 @@ class AdminHandler {
             this.bot.sendMessage(chatId, '❌ Произошла ошибка при удалении админа');
         }
     }
+
+
+    // Добавьте эти методы в файл handler/adminHandler.js:
+
+    // === УПРАВЛЕНИЕ ЗАКАЗАМИ ===
+
+    showOrdersMenu(chatId, messageId) {
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '📋 Все заказы', callback_data: 'orders_all' },
+                    { text: '⏳ Новые заказы', callback_data: 'orders_pending' }
+                ],
+                [
+                    { text: '✅ Выполненные', callback_data: 'orders_completed' },
+                    { text: '❌ Отмененные', callback_data: 'orders_cancelled' }
+                ],
+                [{ text: '⬅️ Назад в админ меню', callback_data: 'admin_menu' }]
+            ]
+        };
+
+        this.bot.editMessageText('📋 *Управление заказами*\n\nВыберите категорию заказов:', {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+        });
+    }
+
+    async showOrdersList(chatId, messageId, status = null) {
+        try {
+            const Order = require('../models/Order');
+            let filter = {};
+            let title = '📋 Все заказы';
+
+            if (status) {
+                filter.status = status;
+                const statusTitles = {
+                    pending: '⏳ Новые заказы',
+                    confirmed: '✅ Подтвержденные заказы',
+                    completed: '✅ Выполненные заказы',
+                    cancelled: '❌ Отмененные заказы'
+                };
+                title = statusTitles[status] || title;
+            }
+
+            const orders = await Order.find(filter)
+                .sort({ createdAt: -1 })
+                .limit(10);
+
+            if (orders.length === 0) {
+                return this.bot.editMessageText(`${title}\n\n❌ Заказы не найдены`, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: '⬅️ Назад', callback_data: 'admin_orders' }
+                        ]]
+                    }
+                });
+            }
+
+            let text = `${title}:\n\n`;
+            const keyboard = [];
+
+            orders.forEach((order, index) => {
+                const orderNumber = order._id.toString().slice(-6);
+                const statusEmoji = {
+                    pending: '⏳',
+                    confirmed: '✅',
+                    completed: '✅',
+                    cancelled: '❌'
+                }[order.status] || '❓';
+
+                const customerName = order.firstName ?
+                    `${order.firstName}${order.lastName ? ' ' + order.lastName : ''}` :
+                    (order.username ? `@${order.username}` : `ID: ${order.userId}`);
+
+                text += `${index + 1}\\. ${statusEmoji} *Заказ #${orderNumber}*\n`;
+                text += `   👤 ${this.escapeMarkdown(customerName)}\n`;
+                text += `   💰 ${order.totalAmount.toLocaleString('cs-CZ')} Kč\n`;
+                text += `   📅 ${order.createdAt.toLocaleDateString('ru-RU')}\n\n`;
+
+                keyboard.push([
+                    { text: `👀 Заказ #${orderNumber}`, callback_data: `admin_view_order_${order._id}` }
+                ]);
+            });
+
+            keyboard.push([{ text: '⬅️ Назад', callback_data: 'admin_orders' }]);
+
+            this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: keyboard }
+            });
+
+        } catch (error) {
+            console.error('Show orders list error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при загрузке заказов');
+        }
+    }
+
+    async viewOrder(chatId, messageId, orderId) {
+        try {
+            const Order = require('../models/Order');
+            const order = await Order.findById(orderId).populate('items.propertyId');
+
+            if (!order) {
+                return this.bot.sendMessage(chatId, '❌ Заказ не найден');
+            }
+
+            const orderNumber = order._id.toString().slice(-6);
+            const statusEmoji = {
+                pending: '⏳',
+                confirmed: '✅',
+                completed: '✅',
+                cancelled: '❌'
+            }[order.status] || '❓';
+
+            const customerName = order.firstName ?
+                `${order.firstName}${order.lastName ? ' ' + order.lastName : ''}` :
+                (order.username ? `@${order.username}` : `ID: ${order.userId}`);
+
+            let text = `${statusEmoji} *Заказ #${orderNumber}*\n\n`;
+
+            // Информация о клиенте
+            text += `👤 *Клиент:* ${this.escapeMarkdown(customerName)}\n`;
+            if (order.username) {
+                text += `📱 *Username:* @${order.username}\n`;
+            }
+            text += `🆔 *ID:* \`${order.userId}\`\n\n`;
+
+            // Адрес доставки
+            text += `📍 *Адрес доставки:*\n${this.escapeMarkdown(order.deliveryAddress)}\n\n`;
+
+            // Товары
+            text += `🛒 *Товары:*\n`;
+            order.items.forEach((item, index) => {
+                text += `${index + 1}\\. *${this.escapeMarkdown(item.name)}*\n`;
+                text += `   📦 Количество: ${item.quantity}\n`;
+                text += `   💰 Цена: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                text += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
+            });
+
+            // Итого
+            text += `💳 *Общая сумма: ${order.totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
+            text += `💰 *Способ оплаты:* ${order.paymentMethod === 'card' ? '💳 Оплата на карту' : '💵 Наличными'}\n`;
+            text += `📅 *Дата заказа:* ${order.createdAt.toLocaleString('ru-RU')}\n`;
+            text += `📊 *Статус:* ${statusEmoji} ${this.getStatusText(order.status)}`;
+
+            const keyboard = {
+                inline_keyboard: [
+                    [
+                        { text: '✅ Подтвердить', callback_data: `order_confirm_${orderId}` },
+                        { text: '❌ Отменить', callback_data: `order_cancel_${orderId}` }
+                    ],
+                    [
+                        { text: '✅ Выполнен', callback_data: `order_complete_${orderId}` }
+                    ],
+                    [{ text: '⬅️ Назад к заказам', callback_data: 'admin_orders' }]
+                ]
+            };
+
+            this.bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            });
+
+        } catch (error) {
+            console.error('View order error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при загрузке заказа');
+        }
+    }
+
+    async updateOrderStatus(chatId, messageId, orderId, newStatus) {
+        try {
+            const Order = require('../models/Order');
+            const order = await Order.findByIdAndUpdate(orderId, { status: newStatus }, { new: true });
+
+            if (!order) {
+                return this.bot.sendMessage(chatId, '❌ Заказ не найден');
+            }
+
+            const orderNumber = order._id.toString().slice(-6);
+            const statusText = this.getStatusText(newStatus);
+
+            this.bot.sendMessage(chatId, `✅ Статус заказа #${orderNumber} изменен на: ${statusText}`);
+
+            // Возвращаемся к просмотру заказа
+            setTimeout(() => this.viewOrder(chatId, messageId, orderId), 1000);
+
+        } catch (error) {
+            console.error('Update order status error:', error);
+            this.bot.sendMessage(chatId, '❌ Ошибка при обновлении статуса заказа');
+        }
+    }
+
+    getStatusText(status) {
+        const statusMap = {
+            pending: 'Ожидает обработки',
+            confirmed: 'Подтвержден',
+            completed: 'Выполнен',
+            cancelled: 'Отменен'
+        };
+        return statusMap[status] || status;
+    }
+
+
+
 }
 
 module.exports = AdminHandler;

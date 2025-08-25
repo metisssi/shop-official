@@ -621,48 +621,108 @@ class ClientHandler {
 
     // НОВАЯ функция для отправки уведомлений (ДОБАВИТЬ после строки 730):
     // ИСПРАВЛЕННАЯ функция для отправки уведомлений (заменить в clientHandler.js)
+    // В файле handler/clientHandler.js замените метод sendOrderNotification на этот:
+
     async sendOrderNotification(order, user, session) {
-    try {
-        // Формируем уведомление...
-        let orderText = `🔔 *НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}*\n\n`;
-        // ... весь текст заказа ...
+        try {
+            console.log('📧 Отправка уведомлений о заказе:', order._id.toString().slice(-6));
 
-        // Отправляем операторам из БД
-        const Operator = require('../models/Operator');
-        const activeOperators = await Operator.find({ 
-            isActive: true, 
-            telegramId: { $exists: true, $ne: null } 
-        });
+            // Формируем полное уведомление о заказе
+            let orderText = `🔔 *НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}*\n\n`;
 
-        console.log(`📧 Найдено активных операторов: ${activeOperators.length}`);
+            // Информация о клиенте
+            orderText += `👤 *Клиент:*\n`;
+            if (user.firstName) {
+                orderText += `   Имя: ${user.firstName}`;
+                if (user.lastName) orderText += ` ${user.lastName}`;
+                orderText += `\n`;
+            }
+            if (user.username) {
+                orderText += `   Username: @${user.username}\n`;
+            }
+            orderText += `   ID: \`${order.userId}\`\n\n`;
 
-        for (const operator of activeOperators) {
+            // Адрес доставки
+            orderText += `📍 *Адрес доставки:*\n${session.deliveryAddress}\n\n`;
+
+            // Детали заказа
+            orderText += `🛒 *Детали заказа:*\n`;
+            session.cart.forEach((item, index) => {
+                orderText += `${index + 1}\\. *${item.name}*\n`;
+                orderText += `   📦 Количество: ${item.quantity}\n`;
+                orderText += `   💰 Цена за шт: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
+                orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
+            });
+
+            // Итоговая сумма и способ оплаты
+            const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
+            orderText += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
+            orderText += `💰 *Способ оплаты:* ${order.paymentMethod === 'card' ? '💳 Оплата на карту' : '💵 Наличными при встрече'}\n`;
+            orderText += `📅 *Дата заказа:* ${order.createdAt.toLocaleString('ru-RU')}\n\n`;
+
+            orderText += `🔔 *Свяжитесь с клиентом для уточнения деталей!*`;
+
+            // Отправляем операторам из базы данных
+            const Operator = require('../models/Operator');
+            const activeOperators = await Operator.find({
+                isActive: true,
+                telegramId: { $exists: true, $ne: null }
+            });
+
+            console.log(`📧 Найдено активных операторов в БД: ${activeOperators.length}`);
+
+            // Отправляем каждому оператору
+            for (const operator of activeOperators) {
+                try {
+                    await this.bot.sendMessage(operator.telegramId, orderText, {
+                        parse_mode: 'Markdown',
+                        disable_web_page_preview: true
+                    });
+                    console.log(`✅ Уведомление отправлено оператору ${operator.name} (ID: ${operator.telegramId})`);
+                } catch (error) {
+                    console.error(`❌ Ошибка отправки оператору ${operator.name} (${operator.telegramId}):`, error.message);
+                }
+            }
+
+            // Отправляем всем админам как резерв
             try {
-                await this.bot.sendMessage(operator.telegramId, orderText, {
+                const adminConfig = require('../config/adminConfig');
+                const adminIds = adminConfig.getAdminIds();
+
+                console.log(`📧 Отправка резервного уведомления ${adminIds.length} админам`);
+
+                for (const adminId of adminIds) {
+                    try {
+                        await this.bot.sendMessage(adminId, orderText, {
+                            parse_mode: 'Markdown',
+                            disable_web_page_preview: true
+                        });
+                        console.log(`✅ Резервное уведомление отправлено админу: ${adminId}`);
+                    } catch (error) {
+                        console.error(`❌ Ошибка отправки админу ${adminId}:`, error.message);
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Ошибка получения списка админов:', error);
+            }
+
+            // Дополнительно отправляем в канал @metisuk как финальный резерв
+            try {
+                await this.bot.sendMessage('@metisuk', orderText, {
                     parse_mode: 'Markdown',
                     disable_web_page_preview: true
                 });
-                console.log(`✅ Уведомление отправлено оператору ${operator.name} (${operator.telegramId})`);
+                console.log('✅ Резервное уведомление отправлено в канал @metisuk');
             } catch (error) {
-                console.error(`❌ Ошибка отправки оператору ${operator.name}:`, error.message);
+                console.error('❌ Не удалось отправить в канал @metisuk:', error.message);
             }
-        }
 
-        // Резервный канал @metisuk
-        try {
-            await this.bot.sendMessage('@metisuk', orderText, {
-                parse_mode: 'Markdown',
-                disable_web_page_preview: true
-            });
-            console.log('✅ Резервное уведомление отправлено на @metisuk');
+            console.log('✅ Процесс отправки уведомлений завершен');
+
         } catch (error) {
-            console.error('❌ Не удалось отправить на @metisuk:', error);
+            console.error('❌ Критическая ошибка при отправке уведомлений:', error);
         }
-
-    } catch (error) {
-        console.error('❌ Критическая ошибка при отправке уведомлений:', error);
     }
-}
     async requestCustomQuantity(chatId, messageId, propertyId) {
         try {
             const property = await this.db.getPropertyById(propertyId);
