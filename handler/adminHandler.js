@@ -1197,15 +1197,18 @@ class AdminHandler {
         global.adminUtils.createSession(chatId, 'adding_operator_id', {});
     }
 
-    const text = `➕ *Добавление нового оператора*\n\n` +
-        `🆔 *Введите Telegram ID оператора:*\n\n` +
-        `💡 *Как узнать ID:*\n` +
+    // УБИРАЕМ parse_mode и проблемные символы
+    const text = `➕ Добавление нового оператора\n\n` +
+        `🆔 Введите Telegram ID оператора:\n\n` +
+        `💡 Как узнать ID:\n` +
         `• Попросите оператора написать боту @userinfobot\n` +
         `• Или используйте @getmyid_bot\n\n` +
-        `*Введите только цифры ID:*`;
+        `Введите только цифры ID:`;
 
-    this.bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    // БЕЗ parse_mode
+    this.bot.sendMessage(chatId, text);
 }
+
 
     async editOperator(chatId, messageId, operatorId) {
         try {

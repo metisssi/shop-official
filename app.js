@@ -537,35 +537,36 @@ class RealEstateBot {
     // В файле app.js замените метод handleOperatorIdInput на этот исправленный:
 
     async handleOperatorIdInput(chatId, userId, text) {
-        const telegramId = parseInt(text.trim());
+    const telegramId = parseInt(text.trim());
 
-        if (isNaN(telegramId) || telegramId <= 0) {
-            return this.bot.sendMessage(chatId, '❌ Неверный формат ID. Введите корректный Telegram ID (только цифры):');
-        }
-
-        try {
-            const Operator = require('./models/Operator');
-
-            // Проверяем, нет ли уже оператора с таким ID
-            const existingOperator = await Operator.findOne({ telegramId: telegramId });
-            if (existingOperator) {
-                return this.bot.sendMessage(chatId, `❌ Оператор с ID ${telegramId} уже существует\nВведите другой ID:`);
-            }
-
-            // Переходим к вводу username
-            this.adminUtils.createSession(userId, 'adding_operator_username', {
-                telegramId: telegramId
-            });
-
-            this.bot.sendMessage(chatId,
-                `🆔 *ID оператора:* ${telegramId}\n\n📱 *Теперь введите username оператора* (без @):\n\n💡 *Как узнать username:*\n• Попросите оператора зайти в настройки Telegram\n• Или он может написать вам свой @username\n\nВведите username без символа @:`,
-                { parse_mode: 'Markdown' }
-            );
-        } catch (error) {
-            console.error('Operator ID input error:', error);
-            this.bot.sendMessage(chatId, '❌ Ошибка при проверке ID. Попробуйте еще раз.');
-        }
+    if (isNaN(telegramId) || telegramId <= 0) {
+        return this.bot.sendMessage(chatId, '❌ Неверный формат ID. Введите корректный Telegram ID (только цифры):');
     }
+
+    try {
+        const Operator = require('./models/Operator');
+
+        // Проверяем, нет ли уже оператора с таким ID
+        const existingOperator = await Operator.findOne({ telegramId: telegramId });
+        if (existingOperator) {
+            return this.bot.sendMessage(chatId, `❌ Оператор с ID ${telegramId} уже существует\nВведите другой ID:`);
+        }
+
+        // Переходим к вводу username
+        this.adminUtils.createSession(userId, 'adding_operator_username', {
+            telegramId: telegramId
+        });
+
+        // БЕЗ parse_mode и проблемных символов
+        const responseText = `🆔 ID оператора: ${telegramId}\n\n📱 Теперь введите username оператора (без @):\n\n💡 Как узнать username:\n• Попросите оператора зайти в настройки Telegram\n• Или он может написать вам свой @username\n\nВведите username без символа @:`;
+        
+        this.bot.sendMessage(chatId, responseText);
+    } catch (error) {
+        console.error('Operator ID input error:', error);
+        this.bot.sendMessage(chatId, '❌ Ошибка при проверке ID. Попробуйте еще раз.');
+    }
+}
+
 
     async handleEditOperatorName(chatId, userId, text, operatorId) {
         const validation = this.adminUtils.validateName(text);
@@ -592,73 +593,62 @@ class RealEstateBot {
     }
 
     async handleOperatorUsernameInput(chatId, userId, text, sessionData) {
-        const username = text.trim().replace('@', '');
+    const username = text.trim().replace('@', '');
 
-        if (!username || username.length < 3) {
-            return this.bot.sendMessage(chatId, `❌ Username должен содержать минимум 3 символа\nПопробуйте еще раз:`);
-        }
-
-        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-            return this.bot.sendMessage(chatId, `❌ Username может содержать только буквы, цифры и подчеркивания\nПопробуйте еще раз:`);
-        }
-
-        try {
-            const Operator = require('./models/Operator');
-
-            // Проверяем, нет ли уже оператора с таким username
-            const existingOperator = await Operator.findOne({ username: username });
-            if (existingOperator) {
-                return this.bot.sendMessage(chatId, `❌ Оператор с username @${username} уже существует\nВведите другой username:`);
-            }
-
-            // Создаем нового оператора
-            const operator = new Operator({
-                name: username, // Используем username как имя
-                username: username,
-                telegramId: sessionData.telegramId,
-                description: '',
-                isActive: true,
-                specialization: 'general',
-                order: 0
-            });
-
-            await operator.save();
-            this.adminUtils.clearSession(userId);
-
-            const successMessage = `✅ *Оператор успешно создан!*\n\n` +
-                `🆔 *ID:* ${sessionData.telegramId}\n` +
-                `📱 *Username:* @${username}\n\n` +
-                `🎯 *Теперь оператор будет получать уведомления о всех новых заказах!*`;
-
-            this.bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
-
-            // Уведомляем нового оператора
-            try {
-                const welcomeMessage = `🎉 *Добро пожаловать!*\n\n` +
-                    `Вы назначены оператором интернет-магазина!\n\n` +
-                    `🔔 *Теперь вы будете получать уведомления о всех новых заказах клиентов.*\n\n` +
-                    `📋 *В уведомлениях будет вся информация:*\n` +
-                    `• Данные клиента\n` +
-                    `• Адрес доставки\n` +
-                    `• Список товаров\n` +
-                    `• Сумма заказа\n` +
-                    `• Способ оплаты\n\n` +
-                    `💡 *Ваша задача* - связаться с клиентом и уточнить детали доставки.`;
-
-                await this.bot.sendMessage(sessionData.telegramId, welcomeMessage, { parse_mode: 'Markdown' });
-                console.log('✅ Приветствие отправлено новому оператору');
-            } catch (error) {
-                console.log('⚠️ Не удалось отправить приветствие оператору:', error.message);
-            }
-
-            setTimeout(() => this.adminHandler.showAdminMenu(chatId), 2000);
-
-        } catch (error) {
-            console.error('Create operator error:', error);
-            this.adminUtils.clearSession(userId);
-            this.bot.sendMessage(chatId, '❌ Ошибка при создании оператора.');
-        }
+    if (!username || username.length < 3) {
+        return this.bot.sendMessage(chatId, `❌ Username должен содержать минимум 3 символа\nПопробуйте еще раз:`);
     }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        return this.bot.sendMessage(chatId, `❌ Username может содержать только буквы, цифры и подчеркивания\nПопробуйте еще раз:`);
+    }
+
+    try {
+        const Operator = require('./models/Operator');
+
+        // Проверяем, нет ли уже оператора с таким username
+        const existingOperator = await Operator.findOne({ username: username });
+        if (existingOperator) {
+            return this.bot.sendMessage(chatId, `❌ Оператор с username @${username} уже существует\nВведите другой username:`);
+        }
+
+        // Создаем нового оператора
+        const operator = new Operator({
+            name: username,
+            username: username,
+            telegramId: sessionData.telegramId,
+            description: '',
+            isActive: true,
+            specialization: 'general',
+            order: 0
+        });
+
+        await operator.save();
+        this.adminUtils.clearSession(userId);
+
+        // БЕЗ parse_mode
+        const successMessage = `✅ Оператор успешно создан!\n\n🆔 ID: ${sessionData.telegramId}\n📱 Username: @${username}\n\n🎯 Теперь оператор будет получать уведомления о всех новых заказах!`;
+
+        this.bot.sendMessage(chatId, successMessage);
+
+        // Уведомляем нового оператора БЕЗ parse_mode
+        try {
+            const welcomeMessage = `🎉 Добро пожаловать!\n\nВы назначены оператором интернет-магазина!\n\n🔔 Теперь вы будете получать уведомления о всех новых заказах клиентов.\n\n📋 В уведомлениях будет вся информация:\n• Данные клиента\n• Адрес доставки\n• Список товаров\n• Сумма заказа\n• Способ оплаты\n\n💡 Ваша задача - связаться с клиентом и уточнить детали доставки.`;
+
+            await this.bot.sendMessage(sessionData.telegramId, welcomeMessage);
+            console.log('✅ Приветствие отправлено новому оператору');
+        } catch (error) {
+            console.log('⚠️ Не удалось отправить приветствие оператору:', error.message);
+        }
+
+        setTimeout(() => this.adminHandler.showAdminMenu(chatId), 2000);
+
+    } catch (error) {
+        console.error('Create operator error:', error);
+        this.adminUtils.clearSession(userId);
+        this.bot.sendMessage(chatId, '❌ Ошибка при создании оператора.');
+    }
+}
 
     // Добавьте этот метод в класс RealEstateBot в app.js (если его нет):
 
