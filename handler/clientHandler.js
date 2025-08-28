@@ -2,6 +2,7 @@
 const config = require('../config/config');
 const Keyboards = require('../keyboards');
 
+
 class ClientHandler {
     constructor(bot, database) {
         this.bot = bot;
@@ -61,6 +62,9 @@ class ClientHandler {
         const messageId = callbackQuery.message.message_id;
         const data = callbackQuery.data;
         const session = this.getUserSession(chatId);
+
+        console.log('🔍 ОТЛАДКА: Получен callback_data:', data);
+        console.log('🔍 ОТЛАДКА: От пользователя:', chatId);
 
         console.log('📞 Обработка callback:', { userId: chatId, data, sessionState: session.state, lastMessageType: session.lastMessageType });
 
