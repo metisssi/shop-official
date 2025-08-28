@@ -31,6 +31,11 @@ class ClientHandler {
         return this.userSessions.get(userId);
     }
 
+    escapeMarkdown(text) {
+        if (!text) return '';
+        return String(text).replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+    }
+
     async handleStart(msg) {
         const chatId = msg.chat.id;
         const session = this.getUserSession(chatId);
@@ -623,32 +628,45 @@ class ClientHandler {
     // ИСПРАВЛЕННАЯ функция для отправки уведомлений (заменить в clientHandler.js)
     // В файле handler/clientHandler.js замените метод sendOrderNotification на этот:
 
+    // В файле handler/clientHandler.js замените метод sendOrderNotification на этот исправленный:
+
     async sendOrderNotification(order, user, session) {
         try {
             console.log('📧 Отправка уведомлений о заказе:', order._id.toString().slice(-6));
 
+            // Функция для безопасного экранирования текста
+            const escapeMarkdown = (text) => {
+                if (!text) return '';
+                return String(text).replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+            };
+
             // Формируем полное уведомление о заказе
             let orderText = `🔔 *НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}*\n\n`;
 
-            // Информация о клиенте
+            // Информация о клиенте (БЕЗОПАСНОЕ экранирование)
             orderText += `👤 *Клиент:*\n`;
             if (user.firstName) {
-                orderText += `   Имя: ${user.firstName}`;
-                if (user.lastName) orderText += ` ${user.lastName}`;
+                const firstName = escapeMarkdown(user.firstName);
+                const lastName = user.lastName ? escapeMarkdown(user.lastName) : '';
+                orderText += `   Имя: ${firstName}`;
+                if (lastName) orderText += ` ${lastName}`;
                 orderText += `\n`;
             }
             if (user.username) {
-                orderText += `   Username: @${user.username}\n`;
+                const username = escapeMarkdown(user.username);
+                orderText += `   Username: @${username}\n`;
             }
-            orderText += `   ID: \`${order.userId}\`\n\n`;
+            orderText += `   ID: ${order.userId}\n\n`;
 
-            // Адрес доставки
-            orderText += `📍 *Адрес доставки:*\n${session.deliveryAddress}\n\n`;
+            // Адрес доставки (БЕЗОПАСНОЕ экранирование)
+            const safeAddress = escapeMarkdown(session.deliveryAddress);
+            orderText += `📍 *Адрес доставки:*\n${safeAddress}\n\n`;
 
             // Детали заказа
             orderText += `🛒 *Детали заказа:*\n`;
             session.cart.forEach((item, index) => {
-                orderText += `${index + 1}\\. *${item.name}*\n`;
+                const safeName = escapeMarkdown(item.name);
+                orderText += `${index + 1}\\. *${safeName}*\n`;
                 orderText += `   📦 Количество: ${item.quantity}\n`;
                 orderText += `   💰 Цена за шт: ${item.price.toLocaleString('cs-CZ')} Kč\n`;
                 orderText += `   💵 Сумма: ${item.total.toLocaleString('cs-CZ')} Kč\n\n`;
@@ -658,7 +676,10 @@ class ClientHandler {
             const totalAmount = session.cart.reduce((sum, item) => sum + item.total, 0);
             orderText += `💳 *Общая сумма: ${totalAmount.toLocaleString('cs-CZ')} Kč*\n`;
             orderText += `💰 *Способ оплаты:* ${order.paymentMethod === 'card' ? '💳 Оплата на карту' : '💵 Наличными при встрече'}\n`;
-            orderText += `📅 *Дата заказа:* ${order.createdAt.toLocaleString('ru-RU')}\n\n`;
+
+            // Безопасное форматирование даты
+            const orderDate = order.createdAt.toLocaleString('ru-RU');
+            orderText += `📅 *Дата заказа:* ${orderDate}\n\n`;
 
             orderText += `🔔 *Свяжитесь с клиентом для уточнения деталей!*`;
 
@@ -721,6 +742,29 @@ class ClientHandler {
 
         } catch (error) {
             console.error('❌ Критическая ошибка при отправке уведомлений:', error);
+
+            // FALLBACK: отправляем простое уведомление без Markdown
+            try {
+                const adminConfig = require('../config/adminConfig');
+                const adminIds = adminConfig.getAdminIds();
+
+                const simpleText = `🔔 НОВЫЙ ЗАКАЗ #${order._id.toString().slice(-6)}\n\n` +
+                    `Клиент: ${user.firstName || ''} ${user.lastName || ''} (ID: ${order.userId})\n` +
+                    `Адрес: ${session.deliveryAddress}\n` +
+                    `Сумма: ${session.cart.reduce((sum, item) => sum + item.total, 0).toLocaleString('cs-CZ')} Kč\n` +
+                    `Оплата: ${order.paymentMethod === 'card' ? 'На карту' : 'Наличными'}\n\n` +
+                    `Свяжитесь с клиентом!`;
+
+                for (const adminId of adminIds) {
+                    try {
+                        await this.bot.sendMessage(adminId, simpleText);
+                    } catch (fallbackError) {
+                        console.error(`❌ Fallback отправка админу ${adminId} не удалась:`, fallbackError.message);
+                    }
+                }
+            } catch (fallbackError) {
+                console.error('❌ Критическая ошибка в fallback уведомлении:', fallbackError);
+            }
         }
     }
     async requestCustomQuantity(chatId, messageId, propertyId) {

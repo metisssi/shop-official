@@ -1,3 +1,5 @@
+// В файле models/Operator.js ЗАМЕНИТЬ полностью на это:
+
 const mongoose = require('mongoose');
 
 const operatorSchema = new mongoose.Schema({
@@ -14,8 +16,8 @@ const operatorSchema = new mongoose.Schema({
     },
     telegramId: { 
         type: Number, 
-        unique: true, 
-        sparse: true // Позволяет null значения
+        required: true,  // Теперь обязательное поле
+        unique: true
     },
     description: { 
         type: String, 
@@ -25,11 +27,6 @@ const operatorSchema = new mongoose.Schema({
     isActive: { 
         type: Boolean, 
         default: true 
-    },
-    contactInfo: {
-        phone: String,
-        email: String,
-        workingHours: String
     },
     specialization: {
         type: String,
@@ -47,17 +44,10 @@ operatorSchema.virtual('formattedUsername').get(function() {
     return this.username.startsWith('@') ? this.username : `@${this.username}`;
 });
 
-// Виртуальное поле для полной информации
-operatorSchema.virtual('fullInfo').get(function() {
+// Виртуальное поле для отображения в админке
+operatorSchema.virtual('displayInfo').get(function() {
     const status = this.isActive ? '✅' : '❌';
-    const specialization = {
-        general: 'Общий',
-        premium: 'Премиум',
-        commercial: 'Коммерческая',
-        residential: 'Жилая'
-    };
-    
-    return `${status} ${this.name} (${this.formattedUsername}) - ${specialization[this.specialization]}`;
+    return `${status} ${this.name} (${this.formattedUsername}) - ID: ${this.telegramId}`;
 });
 
 // Методы модели
@@ -68,14 +58,33 @@ operatorSchema.methods.getContactUrl = function() {
 
 // Статические методы
 operatorSchema.statics.getActiveOperators = function() {
-    return this.find({ isActive: true }).sort({ order: 1, name: 1 });
+    return this.find({ 
+        isActive: true,
+        telegramId: { $exists: true, $ne: null }
+    }).sort({ order: 1, username: 1 });
 };
 
-operatorSchema.statics.getOperatorsBySpecialization = function(specialization) {
-    return this.find({ 
-        isActive: true, 
-        specialization: specialization 
-    }).sort({ order: 1, name: 1 });
+operatorSchema.statics.findByTelegramId = function(telegramId) {
+    return this.findOne({ 
+        telegramId: telegramId,
+        isActive: true
+    });
 };
+
+operatorSchema.statics.findByUsername = function(username) {
+    const cleanUsername = username.replace('@', '');
+    return this.findOne({ 
+        username: cleanUsername,
+        isActive: true
+    });
+};
+
+// Middleware для автоматической очистки username
+operatorSchema.pre('save', function(next) {
+    if (this.username && this.username.startsWith('@')) {
+        this.username = this.username.substring(1);
+    }
+    next();
+});
 
 module.exports = mongoose.model('Operator', operatorSchema);

@@ -89,7 +89,7 @@ class Keyboards {
     // Клавиатура для выбора количества
     static getQuantityKeyboard(propertyId) {
         console.log('🎹 Создание клавиатуры количества для товара:', propertyId);
-        
+
         return {
             reply_markup: {
                 inline_keyboard: [
@@ -178,30 +178,35 @@ class Keyboards {
     static async getOperatorsKeyboard() {
         try {
             const Operator = require('./models/Operator');
-            const operators = await Operator.getActiveOperators();
+            const operators = await Operator.find({
+                isActive: true,
+                telegramId: { $exists: true, $ne: null }
+            }).sort({ order: 1, username: 1 });
+
+            console.log(`📞 Найдено ${operators.length} активных операторов`);
 
             if (operators.length === 0) {
-                // Если в БД нет операторов, используем из конфига как fallback
-                const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
-                    { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
-                ]);
-
-                keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
-
+                // Fallback если нет операторов в БД
                 return {
                     reply_markup: {
-                        inline_keyboard: keyboard
+                        inline_keyboard: [
+                            [{ text: "❌ Операторы не найдены", callback_data: "no_operators" }],
+                            [{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]
+                        ]
                     }
                 };
             }
 
-            // Используем операторов из БД
-            const keyboard = operators.map(operator => [
-                {
-                    text: `${operator.name} ${operator.formattedUsername}`,
-                    url: operator.getContactUrl()
-                }
-            ]);
+            // Создаем кнопки для операторов
+            const keyboard = operators.map(operator => {
+                const displayName = operator.name || operator.username;
+                const username = operator.username.startsWith('@') ? operator.username : `@${operator.username}`;
+
+                return [{
+                    text: `📞 ${displayName} ${username}`,
+                    url: `https://t.me/${operator.username.replace('@', '')}`
+                }];
+            });
 
             keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
 
@@ -210,23 +215,22 @@ class Keyboards {
                     inline_keyboard: keyboard
                 }
             };
+
         } catch (error) {
             console.error('Error getting operators from DB:', error);
 
-            // В случае ошибки возвращаем операторов из конфига
-            const keyboard = config.AVAILABLE_OPERATORS.map(operator => [
-                { text: `${operator.name} ${operator.username}`, url: `https://t.me/${operator.username.substring(1)}` }
-            ]);
-
-            keyboard.push([{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]);
-
+            // Fallback при ошибке
             return {
                 reply_markup: {
-                    inline_keyboard: keyboard
+                    inline_keyboard: [
+                        [{ text: "❌ Ошибка загрузки операторов", callback_data: "error_operators" }],
+                        [{ text: "◀️ Назад в меню", callback_data: "back_to_start" }]
+                    ]
                 }
             };
         }
     }
+
 
     // === АДМИНСКИЕ КЛАВИАТУРЫ ===
 
