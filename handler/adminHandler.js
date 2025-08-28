@@ -1413,7 +1413,8 @@ class AdminHandler {
             adminsList.forEach((admin, index) => {
                 const status = admin.isSuperAdmin ? '👑 Супер-админ' : '👤 Админ';
                 text += `${index + 1}. ${status}\n`;
-                text += `   🆔 ID: ${admin.id}\n\n`; // Убираем backticks для избежания проблем
+                // ИСПРАВЛЕНО: убираем backticks, используем обычный текст
+                text += `   🆔 ID: ${admin.id}\n\n`;
             });
 
             const keyboard = {
@@ -1437,7 +1438,7 @@ class AdminHandler {
             this.bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
-                // Убираем parse_mode для избежания ошибок
+                // Убираем parse_mode чтобы избежать ошибок с Markdown
                 reply_markup: keyboard
             });
         } catch (error) {
@@ -1481,6 +1482,8 @@ class AdminHandler {
         });
     }
 
+    // В файле handler/adminHandler.js замените метод confirmRemoveAdmin на этот:
+
     async confirmRemoveAdmin(chatId, messageId, adminId) {
         const adminConfig = require('../config/adminConfig');
 
@@ -1496,8 +1499,9 @@ class AdminHandler {
             });
         }
 
+        // ИСПРАВЛЕНО: убираем backticks из текста
         const text = `🗑 *Удаление администратора*\n\n` +
-            `🆔 *ID админа:* \`${adminId}\`\n\n` +
+            `🆔 *ID админа:* ${adminId}\n\n` +
             `⚠️ Вы уверены, что хотите удалить этого администратора?\n\n` +
             `После удаления у пользователя не будет доступа к админ-панели.`;
 
@@ -1518,13 +1522,18 @@ class AdminHandler {
         });
     }
 
+    // В файле handler/adminHandler.js замените метод executeRemoveAdmin на этот:
+
     async executeRemoveAdmin(chatId, messageId, adminId) {
         try {
             const adminConfig = require('../config/adminConfig');
             const result = adminConfig.removeAdmin(parseInt(adminId), chatId);
 
             if (result.success) {
-                this.bot.editMessageText(`✅ ${result.message}\n\n🆔 Удаленный админ: \`${adminId}\``, {
+                // ИСПРАВЛЕНО: убираем backticks
+                const successMessage = `✅ ${result.message}\n\n🆔 Удаленный админ: ${adminId}`;
+
+                this.bot.editMessageText(successMessage, {
                     chat_id: chatId,
                     message_id: messageId,
                     parse_mode: 'Markdown'
